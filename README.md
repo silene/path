@@ -35,3 +35,12 @@ several C++20 features.
 Disclaimer: Most samplers are naive, rejection-based ones, and should
 not be taken as example. Also, the monolithic structure of the code is
 not a good practice either.
+
+To generate a `foo.ppm` file from a scene description (e.g.,
+`examples/spheres.hpp`), execute the following command.
+
+```shell
+make -f Remakefile examples/spheres && examples/spheres
+```
+
+![Image generated for the "spheres" example.](examples/spheres.jpg)
