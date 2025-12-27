@@ -1,0 +1,7 @@
+CXX = g++
+
+palette: palette.cpp
+	$(CXX) -Wall -g -std=c++20 -O2 -ftree-vectorize $< -o $@
+
+%: %.hpp path.cpp
+	$(CXX) '-DUSERDATA="$<"' -Wall -g -std=c++20 -O2 -ftree-vectorize path.cpp -o $@
