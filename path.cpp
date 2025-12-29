@@ -364,6 +364,13 @@ box merge(box const &b1, box const &b2) {
   return b;
 }
 
+box intersect(box const &b1, box const &b2) {
+  box b;
+  for (int i = 0; i < 3; ++i) { b.p1[i] = std::max<float>(b1.p1[i], b2.p1[i]); }
+  for (int i = 0; i < 3; ++i) { b.p2[i] = std::min<float>(b1.p2[i], b2.p2[i]); }
+  return b;
+}
+
 vec center(box const &b) {
   vec v;
   for (int i = 0; i < 3; ++i) { v[i] = 0.5 * (b.p1[i] + b.p2[i]); }
@@ -699,6 +706,9 @@ struct base {
   virtual int subparts() const { return 1; }
   virtual box bounds(int, Transform::ptr) const = 0;
   virtual ball sbounds(int, Transform::ptr) const = 0;
+  virtual bool inside(vec const &) const = 0;
+  virtual bool valid(vec const &, int p) const
+  { assert(p == 0); return true; }
   virtual ~base() = default;
 };
 
@@ -707,9 +717,8 @@ using ptr = base const *;
 struct sphere: base {
   vec center;
   double radius;
-  bool invert;
-  sphere(vec const &c, double r, bool i = false):
-    center(c), radius(r), invert(i) {}
+  sphere(vec const &c, double r):
+    center(c), radius(r) {}
 
   double distance(vec const &pos, vec const &dir, int) const {
     vec p = pos - center;
@@ -726,9 +735,7 @@ struct sphere: base {
   }
 
   vec normal(vec const &pos, int) const {
-    vec n = normalize(pos - center);
-    if (invert) n = -n;
-    return n;
+    return normalize(pos - center);
   }
 
   box bounds(int, Transform::ptr t) const {
@@ -740,6 +747,11 @@ struct sphere: base {
   ball sbounds(int, Transform::ptr t) const {
     assert(t == NULL);
     return { center, radius };
+  }
+
+  bool inside(vec const &pos) const {
+    vec p = pos - center;
+    return (p | p) - radius * radius <= 1e-10;
   }
 };
 
@@ -782,6 +794,10 @@ struct plane: base {
 
   ball sbounds(int, Transform::ptr t) const {
     assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    return (pos | normal_) + dist <= 1e-10;
   }
 };
 
@@ -844,6 +860,10 @@ struct mesh: base {
   ball sbounds(int, Transform::ptr t) const {
     assert(false);
   }
+
+  bool inside(vec const &) const {
+    assert(false);
+  }
 };
 
 mesh::mesh(char const *name, bool b)
@@ -896,6 +916,150 @@ vec mesh::normal(vec const &pos, int data) const {
   vec const &n0 = normals[f[0]], &n1 = normals[f[1]], &n2 = normals[f[2]];
   return normalize((1 - u - v) * n0 + u * n1 + v * n2);
 }
+
+struct union_: base {
+  ptr obj1, obj2;
+  int parts1, parts;
+
+  union_(ptr o1, ptr o2)
+    : obj1(o1), obj2(o2), parts1(obj1->subparts()),
+      parts(parts1 + obj2->subparts()) {}
+
+  double distance(vec const &pos, vec const &dir, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, p);
+    return obj2->distance(pos, dir, p - parts1);
+  }
+
+  vec normal(vec const &pos, int p) const {
+    if (p < parts1) return obj1->normal(pos, p);
+    return obj2->normal(pos, p - parts1);
+  }
+
+  int subparts() const { return parts; }
+
+  box bounds(int p, Transform::ptr t) const {
+    assert(t == NULL);
+    if (p < parts1) return obj1->bounds(p, t);
+    return obj2->bounds(p - parts1, t);
+  }
+
+  ball sbounds(int, Transform::ptr) const {
+    assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    return obj1->inside(pos) || obj2->inside(pos);
+  }
+
+  bool valid(vec const &pos, int p) const {
+    if (p < parts1) return obj1->valid(pos, p) && !obj2->inside(pos);
+    return obj2->valid(pos, p - parts1) && !obj1->inside(pos);
+  }
+
+};
+
+struct intersection: base {
+  ptr obj1, obj2;
+  int parts1, parts;
+  box bnds;
+
+  intersection(ptr o1, ptr o2)
+    : obj1(o1), obj2(o2), parts1(obj1->subparts()),
+      parts(parts1 + obj2->subparts())
+  {
+    box b = Box::empty;
+    for (int n = 0; n < parts1; ++n) {
+      b = Box::merge(b, obj1->bounds(n, NULL));
+    }
+    bnds = b;
+    b = Box::empty;
+    for (int n = parts1; n < parts; ++n) {
+      b = Box::merge(b, obj2->bounds(n - parts1, NULL));
+    }
+    bnds = Box::intersect(bnds, b);
+  }
+
+  double distance(vec const &pos, vec const &dir, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, p);
+    return obj2->distance(pos, dir, p - parts1);
+  }
+
+  vec normal(vec const &pos, int p) const {
+    if (p < parts1) return obj1->normal(pos, p);
+    return obj2->normal(pos, p - parts1);
+  }
+
+  int subparts() const { return parts; }
+
+  box bounds(int p, Transform::ptr t) const {
+    assert(t == NULL);
+    if (p < parts1) return Box::intersect(bnds, obj1->bounds(p, t));
+    return Box::intersect(bnds, obj2->bounds(p - parts1, t));
+  }
+
+  ball sbounds(int, Transform::ptr) const {
+    assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    return obj1->inside(pos) && obj2->inside(pos);
+  }
+
+  bool valid(vec const &pos, int p) const {
+    if (p < parts1) return obj1->valid(pos, p) && obj2->inside(pos);
+    return obj2->valid(pos, p - parts1) && obj1->inside(pos);
+  }
+
+};
+
+struct exclusion: base {
+  ptr obj1, obj2;
+  int parts1, parts;
+  box bnds1;
+
+  exclusion(ptr o1, ptr o2)
+    : obj1(o1), obj2(o2), parts1(obj1->subparts()),
+      parts(parts1 + obj2->subparts())
+  {
+    box b = Box::empty;
+    for (int n = 0; n < parts1; ++n) {
+      b = Box::merge(b, obj1->bounds(n, NULL));
+    }
+    bnds1 = b;
+  }
+
+  double distance(vec const &pos, vec const &dir, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, p);
+    return obj2->distance(pos, dir, p - parts1);
+  }
+
+  vec normal(vec const &pos, int p) const {
+    if (p < parts1) return obj1->normal(pos, p);
+    return -obj2->normal(pos, p - parts1);
+  }
+
+  int subparts() const { return parts; }
+
+  box bounds(int p, Transform::ptr t) const {
+    assert(t == NULL);
+    if (p < parts1) return obj1->bounds(p, t);
+    return Box::intersect(bnds1, obj2->bounds(p - parts1, t));
+  }
+
+  ball sbounds(int, Transform::ptr) const {
+    assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    return obj1->inside(pos) && !obj2->inside(pos);
+  }
+
+  bool valid(vec const &pos, int p) const {
+    if (p < parts1) return obj1->valid(pos, p) && !obj2->inside(pos);
+    return obj2->valid(pos, p - parts1) && obj1->inside(pos);
+  }
+
+};
 
 }
 
@@ -1426,9 +1590,18 @@ contact find_range(vec const &pos, vec const &dir, int ib, int ie) {
       pos2 = obj.transf->position(pos);
       dir2 = obj.transf->rotate * dir;
     }
-    double d = obj.solid->distance(pos2, dir2, o.data);
-    if (d <= 1e-6) continue;
-    if (obj.transf) d *= obj.transf->scale;
+    double d, d2 = 0.;
+    for (;;) {
+      d2 += 1e-6;
+      double dd = obj.solid->distance(pos2 + d2 * dir2, dir2, o.data);
+      if (dd <= 1e-10) continue;
+      if (dd == INFINITY) { d = INFINITY; break; }
+      d2 += dd;
+      d = d2;
+      if (obj.transf) d *= obj.transf->scale;
+      if (d >= bd) break;
+      if (obj.solid->valid(pos2 + d2 * dir2, o.data)) break;
+    }
     if (d >= bd) continue;
     bo = &obj;
     bd = d;
