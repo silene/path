@@ -353,9 +353,18 @@ bool intersect(vec const &pos, vec const &dir, box const &b, double dmax) {
   return true;
 }
 
-void inflate(box &b, vec const &v) {
-  for (int i = 0; i < 3; ++i) { b.p1[i] = std::min<float>(b.p1[i], v[i]); }
-  for (int i = 0; i < 3; ++i) { b.p2[i] = std::max<float>(b.p2[i], v[i]); }
+box merge(vec const &v1, vec const &v2) {
+  box b;
+  for (int i = 0; i < 3; ++i) { b.p1[i] = std::min<float>(v1[i], v2[i]); }
+  for (int i = 0; i < 3; ++i) { b.p2[i] = std::max<float>(v1[i], v2[i]); }
+  return b;
+}
+
+box merge(box const &b1, vec const &v) {
+  box b;
+  for (int i = 0; i < 3; ++i) { b.p1[i] = std::min<float>(b1.p1[i], v[i]); }
+  for (int i = 0; i < 3; ++i) { b.p2[i] = std::max<float>(b1.p2[i], v[i]); }
+  return b;
 }
 
 box merge(box const &b1, box const &b2) {
@@ -818,7 +827,7 @@ struct plane: base {
         v[i] = - ((v | normal_) + dist) / normal_[i];
         if (v[i] < -d) continue;
         if (v[i] > d) continue;
-        inflate(b, v);
+        b = Box::merge(b, v);
       }
     }
     return b;
@@ -881,11 +890,8 @@ struct mesh: base {
     vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
     mat m = t->scale * transpose(t->rotate);
     vec v = m * p0 + t->center;
-    box b { v, v };
-    v = m * p1 + t->center;
-    inflate(b, v);
-    v = m * p2 + t->center;
-    inflate(b, v);
+    box b = Box::merge(v, m * p1 + t->center);
+    b = Box::merge(b, m * p2 + t->center);
     return b;
   }
 
