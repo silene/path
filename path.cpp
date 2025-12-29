@@ -796,6 +796,64 @@ struct sphere: base {
   }
 };
 
+struct cylinder: base {
+  vec basis, axis;
+  double radius;
+  cylinder(vec const &b, vec const &a, double r)
+    : basis(b), axis(a), radius(r) {}
+
+  double distance(vec const &pos, vec const &dir, int) const {
+    vec p = pos - basis;
+    double ia2 = 1 / (axis | axis);
+    vec q = p - (p | axis) * ia2 * axis;
+    vec r = dir - (dir | axis) * ia2 * axis;
+    double a = (r | r);
+    double b = (q | r);
+    double c = (q | q) - radius * radius;
+    if (b >= 0 && c >= 0) return INFINITY;
+    double d = b * b - a * c;
+    if (d < 0) return INFINITY;
+    d = sqrt(d);
+    double t1 = (-b + (b > 0 ? -d : d)) / a;
+    double t2 = a * c / t1;
+    if (t1 < 0 || (t2 >= 0 && t2 < t1)) t1 = t2;
+    if (t1 < 0) return INFINITY;
+    double f = ((p + t1 * dir) | axis) * ia2;
+    if (f >= 0 && f <= 1) return t1;
+    if (t2 < 0) return INFINITY;
+    f = ((p + t2 * dir) | axis) * ia2;
+    if (f >= 0 && f <= 1) return t2;
+    return INFINITY;
+  }
+
+  vec normal(vec const &pos, int) const {
+    vec p = pos - basis;
+    double f = (p | axis) / (axis | axis);
+    return normalize(p - f * axis);
+  }
+
+  box bounds(int, Transform::ptr t) const {
+    assert(t == NULL);
+    vec r { radius, radius, radius };
+    box b = Box::merge(basis - r, basis + r);
+    b = Box::merge(b, basis + axis - r);
+    b = Box::merge(b, basis + axis + r);
+    return b;
+  }
+
+  ball sbounds(int, Transform::ptr t) const {
+    assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    vec p = pos - basis;
+    double f = (p | axis) / (axis | axis);
+    if (f < 0 || f > 1) return false;
+    p = p - f * axis;
+    return (p | p) - radius * radius <= 1e-10;
+  }
+};
+
 struct plane: base {
   vec normal_;
   double dist;
