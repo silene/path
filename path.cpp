@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <complex>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -618,6 +619,37 @@ struct uniform: spectrum_base {
     return sampled_spectrum(strength);
   }
 };
+
+struct sampled: spectrum_base {
+  typedef std::vector<std::pair<double,double>> samples_t;
+  samples_t samples;
+  sampled(samples_t const &s): samples(s) {
+    assert(s.size() != 0);
+  }
+  sampled_spectrum sample(sampled_wl const &wl) const;
+
+};
+
+sampled_spectrum sampled::sample(sampled_wl const &wl) const {
+  sampled_spectrum sp;
+  for (int i = 0; i < nb_s; ++i) {
+    double l = wl.lambda[i];
+    int sb = 0, se = samples.size(), ss = se;
+    while (se > sb + 1) {
+      int sm = (sb + se) / 2;
+      if (samples[sm].first <= l) sb = sm;
+      else se = sm;
+    }
+    if (se == 0) sp[i] = samples[0].second;
+    else if (se == ss) sp[i] = samples[se - 1].second;
+    else {
+      double l1 = samples[sb].first, l2 = samples[se].first;
+      double f = (l - l1) / (l2 - l1);
+      sp[i] = (1 - f) * samples[sb].second + f * samples[se].second;
+    }
+  }
+  return sp;
+}
 
 struct from_wl: spectrum_base {
   double strength, fact;
@@ -1276,6 +1308,16 @@ std::pair<vec, double> refract(vec const &normal, vec const &out, double eta) {
   return { (-1/eta) * out + (cr / eta - ct) * normal, 1 - f };
 }
 
+double metal(vec const &normal, vec const &out, std::complex<double> eta) {
+  using complex = std::complex<double>;
+  double cr = out | normal;
+  complex s2t = (1 - cr * cr) / (eta * eta);
+  complex ct = sqrt(1. - s2t);
+  complex f1 = (eta * cr - ct) / (eta * cr + ct);
+  complex f2 = (cr - eta * ct) / (cr + eta * ct);
+  return 0.5 * (std::norm(f1) + std::norm(f2));
+}
+
 struct emissive: material_base {
   Light::ptr light;
 
@@ -1367,17 +1409,25 @@ struct rough: material_base {
 };
 
 struct reflective: material_base {
-  Spectrum::ptr sp;
-  reflective(Spectrum::ptr s): material_base(Solid, false, false), sp(s) {}
+  Spectrum::ptr eta, extinct;
+  reflective(Spectrum::ptr n, Spectrum::ptr k)
+    : material_base(Solid, false, false), eta(n), extinct(k) {}
 
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
     vec inc = reflect(pt.normal, pt.out);
-    return { { Dirac * sp->sample(wl), inc, Specular }, Dirac };
+    sampled_spectrum eta_ = eta->sample(wl), ext = extinct->sample(wl);
+    sampled_spectrum sp;
+    for (int i = 0; i < Spectrum::nb_s; ++i) {
+      sp[i] = metal(pt.normal, pt.out, std::complex(eta_[i], ext[i]));
+    }
+    return { { Dirac * sp, inc, Specular }, Dirac };
   }
 
+#if 0
   material_base const *regularize() const {
     return new rough(sp, 0.4);
   }
+#endif
 };
 
 struct refractive: material_base {
