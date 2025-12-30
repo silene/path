@@ -1,10 +1,10 @@
 # A Toy Pathtracer
 
-This project is born from my curiosity about what pathtracing is and
-how it differs from raytracing (or rather what I knew of raytracing 30
-years ago) but also from my intent to experiment with Monte-Carlo
-methods and to hone my rusted skills when it comes to calculus (damn
-density functions).
+This project is born from my curiosity about what pathtracing and
+raymarching are and how they differ from raytracing (or rather the
+little I knew of raytracing 30 years ago). It was also an opportunity
+to experiment with Monte-Carlo methods and to hone my rusted skills
+when it comes to calculus (damn density functions).
 
 It has been heavily influenced by the book [Physically Based
 Rendering: From Theory To Implementation](https://pbr-book.org/) by
@@ -29,6 +29,14 @@ the following points:
   makes sense to process multiple, equally spaced wavelengths along a
   single path.
 
+- Metallic reflection is just refraction with a complex, varying index
+  of refraction.
+
+As for raymarching and signed distance functions, a great reference
+was [Inigo Quilez's
+website](https://iquilezles.org/articles/distfunctions/), which is a
+treasure trove of ideas.
+
 Note: A slightly modern C++ compiler is needed, as the code relies on
 several C++20 features.
 
@@ -44,3 +52,4 @@ make -f Remakefile examples/spheres && examples/spheres
 ```
 
 ![Image generated for the "spheres" example.](examples/spheres.jpg)
+![Image generated for the "sdf" example.](examples/sdf.jpg)
