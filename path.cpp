@@ -739,6 +739,211 @@ using ptr = Spectrum::spectrum_base const *;
 using sampled_wl = Spectrum::sampled_wl;
 using sampled_spectrum = Spectrum::sampled_spectrum;
 
+namespace SDF {
+
+struct base {
+  virtual double distance(vec const &) const = 0;
+
+  virtual vec normal(vec const &pos, double d) const {
+    d = std::max(d * 1e-6, 1e-6);
+    double md = -d;
+    double
+      d0 = distance(pos + vec { d, d, d }),
+      d1 = distance(pos + vec { md, md, d }),
+      d2 = distance(pos + vec { md, d, md }),
+      d3 = distance(pos + vec { d, md, md });
+    vec v = {
+      d0 - d1 - d2 + d3,
+      d0 - d1 + d2 - d3,
+      d0 + d1 - d2 - d3 };
+    return normalize(v);
+  }
+
+  virtual ~base() = default;
+};
+
+using ptr = base const *;
+
+struct union_: base {
+  std::vector<ptr> sdfs;
+  union_(std::initializer_list<ptr> s): sdfs(s) {}
+
+  double distance(vec const &pos) const {
+    double d = INFINITY;
+    for (ptr s: sdfs) { d = std::min(d, s->distance(pos)); }
+    return d;
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    double bd = INFINITY;
+    ptr bs = NULL;
+    for (ptr s : sdfs) {
+      double d = s->distance(pos);
+      if (d < bd) { bd = d; bs = s; }
+    }
+    return bs->normal(pos, d_);
+  }
+};
+
+struct smooth_union: base {
+  double k, ik;
+  ptr s1, s2;
+  smooth_union(double k_, ptr s1_, ptr s2_)
+    : k(k_), ik(1 / k_), s1(s1_), s2(s2_) {}
+
+  double distance(vec const &pos) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    double d = std::abs(d1 - d2);
+    if (d > k) return std::min(d1, d2);
+    double h = 1 - d * ik;
+    return std::min(d1, d2) - h * h * k * 0.25;
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    double d = std::abs(d1 - d2);
+    if (d > k)
+      return d1 < d2 ? s1->normal(pos, d_) : s2->normal(pos, d_);
+    double h = (1 - d * ik) * 0.5;
+    vec n1 = s1->normal(pos, d_);
+    vec n2 = s2->normal(pos, d_);
+    vec n = d1 < d2 ? mix(n1, n2, h) : mix(n2, n1, h);
+    return normalize(n);
+  }
+};
+
+struct intersection: base {
+  ptr s1, s2;
+  intersection(ptr s1_, ptr s2_): s1(s1_), s2(s2_) {}
+
+  double distance(vec const &pos) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    return std::max(d1, d2);
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    return d1 > d2 ? s1->normal(pos, d_) : s2->normal(pos, d_);
+  }
+};
+
+struct difference: base {
+  ptr s1, s2;
+  difference(ptr s1_, ptr s2_): s1(s1_), s2(s2_) {}
+
+  double distance(vec const &pos) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    return std::max(d1, -d2);
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    double d1 = s1->distance(pos);
+    double d2 = s2->distance(pos);
+    return d1 > -d2 ? s1->normal(pos, d_) : - s2->normal(pos, d_);
+  }
+};
+
+struct sphere: base {
+  vec center;
+  double radius;
+  sphere(vec const &c, double r): center(c), radius(r) {}
+
+  double distance(vec const &pos) const {
+    return norm(pos - center) - radius;
+  }
+
+  vec normal(vec const &pos, double) const {
+    return normalize(pos - center);
+  }
+};
+
+struct cylinder: base {
+  vec center, dir;
+  double radius;
+  cylinder(vec const &c, vec const &d, double r)
+    : center(c), dir(d), radius(r) {}
+
+  double distance(vec const &pos) const {
+    vec v = pos - center;
+    return norm(v - (v | dir) * dir) - radius;
+  }
+
+  vec normal(vec const &pos, double) const {
+    vec v = pos - center;
+    return normalize(v - (v | dir) * dir);
+  }
+};
+
+struct plane: base {
+  vec normal_;
+  double dist;
+  plane(vec const &n, double d): normal_(n), dist(d) {}
+
+  double distance(vec const &pos) const {
+    return (pos | normal_) + dist;
+  }
+
+  vec normal(vec const &, double) const {
+    return normal_;
+  }
+};
+
+struct box: base {
+  vec center, dim;
+  box(vec const &c, vec const &d): center(c), dim(d) {}
+
+  double distance(vec const &pos) const {
+    vec p = pos - center;
+    for (int i = 0; i < 3; ++i) { p[i] = std::abs(p[i]); }
+    p = p - dim;
+    double d = std::max({ p[0], p[1], p[2] });
+    if (d <= 0) return d;
+    vec q;
+    for (int i = 0; i < 3; ++i) { q[i] = std::max(p[i], 0.); }
+    return norm(q);
+  }
+};
+
+struct iso: base {
+  ptr s;
+  vec center;
+  mat rotate;
+
+  iso(ptr s_, vec const &c, vec const &a, double r):
+    s(s_), center(c), rotate(Matrix::rotation(a, r)) {}
+
+  double distance(vec const &pos) const {
+    vec p = rotate * (pos - center);
+    return s->distance(p);
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    vec p = rotate * (pos - center);
+    return transpose(rotate) * s->normal(p, d_);
+  }
+};
+
+struct inflated: base {
+  ptr s;
+  double radius;
+  inflated(double r, ptr s_): s(s_), radius(r) {}
+
+  double distance(vec const &pos) const {
+    return s->distance(pos) - radius;
+  }
+
+  vec normal(vec const &pos, double d_) const {
+    return s->normal(pos, d_);
+  }
+};
+
+}
+
 namespace Solid {
 
 struct base {
@@ -897,6 +1102,37 @@ struct plane: base {
 
   bool inside(vec const &pos) const {
     return (pos | normal_) + dist <= 1e-10;
+  }
+};
+
+struct sdf: base {
+  SDF::ptr s;
+  sdf(SDF::ptr s_): s(s_) {}
+
+  double distance(vec const &pos, vec const &dir, int) const {
+    for (double l = 0; l < Settings::max_depth; ) {
+      vec npos = pos + l * dir;
+      double d = s->distance(npos);
+      if (d < 1e-6) return l;
+      l += d;
+    }
+    return INFINITY;
+  }
+
+  vec normal(vec const &pos, int) const {
+    return s->normal(pos, 0.);
+  }
+
+  box bounds(int, Transform::ptr t) const {
+    return Box::whole;
+  }
+
+  ball sbounds(int, Transform::ptr t) const {
+    assert(false);
+  }
+
+  bool inside(vec const &pos) const {
+    return s->distance(pos) <= 1e-5;
   }
 };
 
