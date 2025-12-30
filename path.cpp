@@ -40,10 +40,24 @@ struct debug {
   int solids;
 };
 
+namespace Vector {
+
+struct small: std::array<float, 3> {};
+
+struct vec: std::array<double, 3> {
+  operator small() const {
+    return small { (float)(*this)[0], (float)(*this)[1], (float)(*this)[2] };
+  }
+};
+
+}
+
 struct image {
   int width, height;
   std::string data;
+  image(char const *name);
   image(int w, int h): width(w), height(h), data(w * h * 3, '\0') {}
+
   void write(int x, int y, int r, int g, int b) {
     assert(0 <= x && x < width && 0 <= y && y < height);
     int i = (y * width + x) * 3;
@@ -51,12 +65,44 @@ struct image {
     data[i + 1] = g;
     data[i + 2] = b;
   }
+
+  Vector::vec read(int x, int y) const {
+    assert(0 <= x && x < width && 0 <= y && y < height);
+    int i = (y * width + x) * 3;
+    Vector::vec v;
+    for (int j = 0; j < 3; ++j) {
+      unsigned char c = data[i + j];
+      v[j] = c / 255.;
+    }
+    return v;
+  }
+
   void save(char const *name) {
     std::ofstream out(name, std::ios::binary);
     out << "P6 " << width << ' ' << height << " 255\n";
     out << data << '\n';
   }
 };
+
+image::image(char const *name) {
+  std::ifstream file(name);
+  char header[2];
+  file.read(header, 2);
+  assert(header[0] == 'P' && header[1] == '6');
+  int m;
+  file >> width >> height >> m;
+  file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  int s = width * height * 3;
+  data.resize(s);
+  if (m == 255) {
+    file.read(&data[0], s);
+  } else {
+    for (int n = 0; n < s; ++n) {
+      unsigned char u = file.get();
+      data[n] = (int)(255. * u / m);
+    }
+  }
+}
 
 thread_local std::mt19937_64 *rng;
 thread_local debug *dbg;
@@ -98,14 +144,6 @@ using biased = std::pair<T, double>;
 double const Dirac = 1.;
 
 namespace Vector {
-
-struct small: std::array<float, 3> {};
-
-struct vec: std::array<double, 3> {
-  operator small() const {
-    return small { (float)(*this)[0], (float)(*this)[1], (float)(*this)[2] };
-  }
-};
 
 vec &operator+=(vec &u, vec const &v) {
   for (int i = 0; i < 3; ++i) { u[i] += v[i]; }
