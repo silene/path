@@ -1843,7 +1843,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
       if (sp.zero()) goto no_illumination;
       ++dbg->irays;
       contact co = find_contact(curr.pt.pos, r.dir, r.dist);
-      if (co.obj) {
+      if (co.obj && co.dist < r.dist) {
         Material::ptr mo = co.obj->material;
         if (mo->kind != Material::Emissive) goto no_illumination;
         Material::emissive const *me = dynamic_cast<Material::emissive const *>(mo);
