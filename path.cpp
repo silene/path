@@ -476,6 +476,18 @@ struct iso {
   vec position(vec const &pos) const {
     return iscale * rotate * (pos - center);
   }
+
+  box bounds(box const &b) const {
+    box r = Box::empty;
+    for (int i = 0; i < 8; ++i) {
+      vec v;
+      for (int j = 0; j < 3; ++j) {
+        v[j] = (i & (1 << j)) ? b.p2[j] : b.p1[j];
+      }
+      r = Box::merge(r, position(v));
+    }
+    return r;
+  }
 };
 
 using ptr = iso const *;
@@ -743,6 +755,7 @@ namespace SDF {
 
 struct base {
   virtual double distance(vec const &) const = 0;
+  virtual box bounds() const = 0;
 
   virtual vec normal(vec const &pos, double d) const {
     d = std::max(d * 1e-6, 1e-6);
@@ -783,6 +796,12 @@ struct union_: base {
     }
     return bs->normal(pos, d_);
   }
+
+  box bounds() const {
+    box b = Box::empty;
+    for (ptr s: sdfs) { b = Box::merge(b, s->bounds()); }
+    return b;
+  }
 };
 
 struct smooth_union: base {
@@ -812,6 +831,10 @@ struct smooth_union: base {
     vec n = d1 < d2 ? mix(n1, n2, h) : mix(n2, n1, h);
     return normalize(n);
   }
+
+  box bounds() const {
+    return Box::merge(s1->bounds(), s2->bounds());
+  }
 };
 
 struct intersection: base {
@@ -828,6 +851,10 @@ struct intersection: base {
     double d1 = s1->distance(pos);
     double d2 = s2->distance(pos);
     return d1 > d2 ? s1->normal(pos, d_) : s2->normal(pos, d_);
+  }
+
+  box bounds() const {
+    return Box::intersect(s1->bounds(), s2->bounds());
   }
 };
 
@@ -846,6 +873,10 @@ struct difference: base {
     double d2 = s2->distance(pos);
     return d1 > -d2 ? s1->normal(pos, d_) : - s2->normal(pos, d_);
   }
+
+  box bounds() const {
+    return s1->bounds();
+  }
 };
 
 struct sphere: base {
@@ -859,6 +890,11 @@ struct sphere: base {
 
   vec normal(vec const &pos, double) const {
     return normalize(pos - center);
+  }
+
+  box bounds() const {
+    vec r { radius, radius, radius };
+    return { center - r, center + r };
   }
 };
 
@@ -877,6 +913,10 @@ struct cylinder: base {
     vec v = pos - center;
     return normalize(v - (v | dir) * dir);
   }
+
+  box bounds() const {
+    return Box::whole;
+  }
 };
 
 struct plane: base {
@@ -890,6 +930,10 @@ struct plane: base {
 
   vec normal(vec const &, double) const {
     return normal_;
+  }
+
+  box bounds() const {
+    return Box::whole;
   }
 };
 
@@ -907,8 +951,13 @@ struct box: base {
     for (int i = 0; i < 3; ++i) { q[i] = std::max(p[i], 0.); }
     return norm(q);
   }
+
+  Box::box bounds() const {
+    return { center - dim, center + dim };
+  }
 };
 
+#if 0
 struct iso: base {
   ptr s;
   vec center;
@@ -927,6 +976,7 @@ struct iso: base {
     return transpose(rotate) * s->normal(p, d_);
   }
 };
+#endif
 
 struct inflated: base {
   ptr s;
@@ -939,6 +989,13 @@ struct inflated: base {
 
   vec normal(vec const &pos, double d_) const {
     return s->normal(pos, d_);
+  }
+
+  Box::box bounds() const {
+    Box::box b = s->bounds();
+    vec p1 { b.p1[0] - radius, b.p1[1] - radius, b.p1[2] - radius };
+    vec p2 { b.p2[0] + radius, b.p2[1] + radius, b.p2[2] + radius };
+    return { p1, p2 };
   }
 };
 
@@ -1124,7 +1181,8 @@ struct sdf: base {
   }
 
   box bounds(int, Transform::ptr t) const {
-    return Box::whole;
+    box b = s->bounds();
+    return t ? t->bounds(b) : b;
   }
 
   ball sbounds(int, Transform::ptr t) const {
