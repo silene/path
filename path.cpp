@@ -758,8 +758,8 @@ using ptr = base const *;
 struct sphere: base {
   vec center;
   double radius;
-  sphere(vec const &c, double r):
-    center(c), radius(r) {}
+  sphere(vec const &c, double r)
+    : center(c), radius(r) {}
 
   double distance(vec const &pos, vec const &dir, int) const {
     vec p = pos - center;
@@ -1108,12 +1108,12 @@ struct intersection: base {
 
 };
 
-struct exclusion: base {
+struct difference: base {
   ptr obj1, obj2;
   int parts1, parts;
   box bnds1;
 
-  exclusion(ptr o1, ptr o2)
+  difference(ptr o1, ptr o2)
     : obj1(o1), obj2(o2), parts1(obj1->subparts()),
       parts(parts1 + obj2->subparts())
   {

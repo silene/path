@@ -55,7 +55,7 @@ std::vector<object> objects {
     new Material::thin_refractive { 1.3,
       new Material::lambertian { new Spectrum::from_palette { 0.9, 2, 15 } }, },
     NULL },
-  { new Solid::exclusion {
+  { new Solid::difference {
       new Solid::sphere { { 1.1, 0., 0.7 }, 1. },
       new Solid::union_ {
         new Solid::sphere { { 0.9, 0.5, -0.2 }, 0.2 },
