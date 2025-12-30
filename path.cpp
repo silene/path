@@ -1010,8 +1010,7 @@ struct base {
   virtual box bounds(int, Transform::ptr) const = 0;
   virtual ball sbounds(int, Transform::ptr) const = 0;
   virtual bool inside(vec const &) const = 0;
-  virtual bool valid(vec const &, int p) const
-  { assert(p == 0); return true; }
+  virtual bool valid(vec const &, int p) const { return true; }
   virtual ~base() = default;
 };
 
@@ -1273,6 +1272,7 @@ struct mesh: base {
 mesh::mesh(char const *name, bool b)
   : inv_normal(b) {
   std::ifstream file(name);
+  //double ymin = INFINITY;
   for (std::string line; std::getline(file, line); ) {
     std::string::size_type n = line.find(' ');
     if (n == std::string::npos) continue;
@@ -1282,6 +1282,7 @@ mesh::mesh(char const *name, bool b)
       vertices.resize(vertices.size() + 1);
       vec &v = vertices.back();
       l >> v[0] >> v[1] >> v[2];
+      //if (v[1] < ymin) ymin = v[1];
     } else if (line[0] == 'f' && n == 1) {
       std::istringstream l(line);
       l.seekg(2);
@@ -1294,9 +1295,6 @@ mesh::mesh(char const *name, bool b)
         else v = vertices.size() + v;
         assert(0 <= v && (unsigned)v < vertices.size());
       }
-      //vec const &v0 = vertices[f[0]];
-      //double n = norm(cross(vertices[f[1]] - v0, vertices[f[2]] - v0));
-      //if (n <= 0.99) facets.pop_back();
     } else if (line[0] == 'v' && line[1] == 'n' && n == 2) {
       std::istringstream l(line);
       l.seekg(3);
@@ -1305,6 +1303,7 @@ mesh::mesh(char const *name, bool b)
       l >> v[0] >> v[1] >> v[2];
     } else continue;
   }
+  //std::cout << ymin << '\n';
   if (normals.size() < vertices.size()) normals.clear();
 }
 

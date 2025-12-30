@@ -40,10 +40,6 @@ treasure trove of ideas.
 Note: A slightly modern C++ compiler is needed, as the code relies on
 several C++20 features.
 
-Disclaimer: Most samplers are naive, rejection-based ones, and should
-not be taken as example. Also, the monolithic structure of the code is
-not a good practice either.
-
 To generate a `foo.ppm` file from a scene description (e.g.,
 `examples/spheres.hpp`), execute the following command.
 
@@ -51,5 +47,31 @@ To generate a `foo.ppm` file from a scene description (e.g.,
 make -f Remakefile examples/spheres && examples/spheres
 ```
 
+Supported features:
+
+- Pathtracing by sampling both lights and materials.
+
+- Raymarching using signed distance functions.
+
+- Meshes using the `.obj` format.
+
+- Spectral distributions.
+
+Caveats:
+
+- Signed distance functions are only meaningful outside primitives, so
+  they should not be used with a transparent material.
+
+- There is neither path regularization nor bidirectional illumination,
+  so diffuse surfaces indirectly illuminated by reflective or
+  refractive bounces will look very noisy.
+
+- Too many caveats to list exhaustively.
+
+Disclaimer: Most samplers are naive, rejection-based ones, and should
+not serve as examples. Also, the monolithic structure of the code is
+not a good practice either.
+
 ![Image generated for the "spheres" example.](examples/spheres.jpg)
 ![Image generated for the "sdf" example.](examples/sdf.jpg)
+![Image generated for the "bunny" example.](examples/bunny.jpg)
