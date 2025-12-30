@@ -1594,11 +1594,11 @@ struct uniform: base {
 struct spherical: base {
   Spectrum::ptr sp;
   Solid::sphere *sph;
-  double inv_area;
+  double strength;
 
   spherical(Spectrum::ptr s, vec const &c, double r)
     : base(true, false), sp(s), sph(new Solid::sphere(c, r)),
-      inv_area(0.25 * M_1_PI / (r * r)) {}
+      strength(M_1_PI / (r * r)) {}
 
   biased<ray> sample(vec const &pos, vec const &) const {
     vec v = sph->center - pos;
@@ -1618,7 +1618,7 @@ struct spherical: base {
   }
 
   sampled_spectrum get_sp(vec const &pos, vec const &dir, sampled_wl const &wl) const {
-    return inv_area * sp->sample(wl);
+    return strength * sp->sample(wl);
   }
 };
 

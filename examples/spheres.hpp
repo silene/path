@@ -38,7 +38,7 @@ Spectrum::sampled gold_k { {
 
 std::vector<Light::ptr> lights {
   new Light::spherical {
-    new Spectrum::blackbody { 50., 5800 },
+    new Spectrum::blackbody { 12.5, 5800 },
     { 2.2, 2., -2.2 }, 0.4 },
   new Light::uniform {
     new Spectrum::blackbody { 0.6, 4300 } },
