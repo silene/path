@@ -1165,16 +1165,7 @@ struct plane: base {
 struct sdf: base {
   SDF::ptr s;
   sdf(SDF::ptr s_): s(s_) {}
-
-  double distance(vec const &pos, vec const &dir, int) const {
-    for (double l = 0; l < Settings::max_depth; ) {
-      vec npos = pos + l * dir;
-      double d = s->distance(npos);
-      if (d < 1e-6) return l;
-      l += d;
-    }
-    return INFINITY;
-  }
+  double distance(vec const &pos, vec const &dir, int) const;
 
   vec normal(vec const &pos, int) const {
     return s->normal(pos, 0.);
@@ -1193,6 +1184,29 @@ struct sdf: base {
     return s->distance(pos) <= 1e-5;
   }
 };
+
+double sdf::distance(vec const &pos, vec const &dir, int) const {
+  double prev = INFINITY;
+  bool optimistic = false;
+  for (double l = 0; l < Settings::max_depth; ) {
+    vec npos = pos + l * dir;
+    double d = s->distance(npos);
+    if (optimistic && d <= prev) {
+      // The bet was wrong, cancel the extra jump.
+      optimistic = false;
+      l -= prev;
+      continue;
+    }
+    if (d < 1e-6) return l;
+    // Optimistically jump twice as far, if the distance is growing.
+    optimistic = (prev < d);
+    prev = d;
+    l += d;
+    if (!optimistic) continue;
+    l += d;
+  }
+  return INFINITY;
+}
 
 std::pair<double, double> toUV(vec p, vec q, vec r) {
   // the barycentric coordinates u, v, 1-u-v are proportional
