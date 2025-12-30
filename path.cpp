@@ -1220,7 +1220,10 @@ std::pair<double, double> toUV(vec p, vec q, vec r) {
 struct mesh: base {
   std::vector<vec> vertices;
   std::vector<vec> normals;
+  std::vector<std::array<double, 2>> textures;
   std::vector<std::array<int, 3>> facets;
+  std::vector<std::array<int, 3>> facets_n;
+  std::vector<std::array<int, 3>> facets_uv;
   bool inv_normal;
 
   mesh(char const *name, bool = false);
@@ -1273,50 +1276,81 @@ mesh::mesh(char const *name, bool b)
   : inv_normal(b) {
   std::ifstream file(name);
   //double ymin = INFINITY;
+  bool has_n = false, has_uv = false;
   for (std::string line; std::getline(file, line); ) {
     std::string::size_type n = line.find(' ');
     if (n == std::string::npos) continue;
     if (line[0] == 'v' && n == 1) {
       std::istringstream l(line);
-      l.seekg(2);
+      l.ignore(2);
       vertices.resize(vertices.size() + 1);
       vec &v = vertices.back();
       l >> v[0] >> v[1] >> v[2];
       //if (v[1] < ymin) ymin = v[1];
     } else if (line[0] == 'f' && n == 1) {
       std::istringstream l(line);
-      l.seekg(2);
+      l.ignore(2);
       facets.resize(facets.size() + 1);
-      auto &f = facets.back();
-      l >> f[0] >> f[1] >> f[2];
+      facets_n.resize(facets_n.size() + 1);
+      facets_uv.resize(facets_uv.size() + 1);
       for (int i = 0; i < 3; ++i) {
-        int &v = f[i];
-        if (v > 0) --v;
-        else v = vertices.size() + v;
+        int &v = facets.back()[i], &n = facets_n.back()[i], &u = facets_uv.back()[i];
+        l >> v;
+        if (v > 0) --v; else v += vertices.size();
         assert(0 <= v && (unsigned)v < vertices.size());
+        n = -1;
+        u = -1;
+        if (l.peek() != '/') continue;
+        l.ignore(1);
+        if (l.peek() == '/') goto read_n;
+        has_uv = true;
+        l >> u;
+        if (u > 0) --u; else u += textures.size();
+        assert(0 <= u && (unsigned)u < textures.size());
+        if (l.peek() != '/') continue;
+      read_n:
+        has_n = true;
+        l.ignore(1);
+        l >> n;
+        if (n > 0) --n; else n += normals.size();
+        if (!(0 <= n && (unsigned)n < normals.size())) {
+          std::cerr << '"' << line << "\" " << u << ' ' << n << '\n';
+        }
+        assert(0 <= n && (unsigned)n < normals.size());
       }
     } else if (line[0] == 'v' && line[1] == 'n' && n == 2) {
       std::istringstream l(line);
-      l.seekg(3);
+      l.ignore(3);
       normals.resize(normals.size() + 1);
       vec &v = normals.back();
       l >> v[0] >> v[1] >> v[2];
+    } else if (line[0] == 'v' && line[1] == 't' && n == 2) {
+      std::istringstream l(line);
+      l.ignore(3);
+      textures.resize(textures.size() + 1);
+      std::array<double, 2> &v = textures.back();
+      l >> v[0] >> v[1];
     } else continue;
   }
   //std::cout << ymin << '\n';
-  if (normals.size() < vertices.size()) normals.clear();
+  if (!has_uv) facets_uv.clear();
+  if (!has_n) facets_n.clear();
 }
 
 vec mesh::normal(vec const &pos, int data) const {
   std::array<int, 3> const &f = facets[data];
   vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
   vec p10 = p1 - p0, p20 = p2 - p0;
-  if (normals.empty()) {
+  if (facets_n.empty()) {
+    compute_n:
     vec n = normalize(cross(p10, p20));
     return inv_normal ? -n : n;
   }
   auto [u, v] = toUV(p10, p20, pos - p0);
-  vec const &n0 = normals[f[0]], &n1 = normals[f[1]], &n2 = normals[f[2]];
+  std::array<int, 3> const &fn = facets_n[data];
+  int i0 = fn[0], i1 = fn[1], i2 = fn[2];
+  if (i0 < 0 || i1 < 0 || i2 < 0) goto compute_n;
+  vec const &n0 = normals[i0], &n1 = normals[i1], &n2 = normals[i2];
   return normalize((1 - u - v) * n0 + u * n1 + v * n2);
 }
 
