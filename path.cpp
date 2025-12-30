@@ -2117,6 +2117,11 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
     if (!pdf) break;
     curr.inc = r.dir;
     curr.pdf = pdf;
+    if ((curr.inc | curr.pt.normal) < 0) {
+      curr.pt.pos += -1e-6 * curr.pt.normal;
+    } else {
+      curr.pt.pos += 1e-6 * curr.pt.normal;
+    }
     if (Settings::shadows == Settings::None || r.specular == Material::Specular || !mat->has_bxdf) {
       no_illumination:
       (void)0;
