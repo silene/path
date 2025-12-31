@@ -1041,14 +1041,20 @@ struct inflated: base {
 
 namespace Solid {
 
+struct contact {
+  vec pos, normal; // in the local basis
+  std::array<double, 2> uv;
+  int data;
+};
+
 struct base {
-  virtual double distance(vec const &, vec const &, int) const = 0;
-  virtual vec normal(vec const &, int) const = 0;
+  virtual double distance(vec const &, vec const &, contact &, int) const = 0;
+  virtual bool complete(contact &, int) const = 0;
+  virtual vec snormal(contact const &co) const { return co.normal; }
   virtual int subparts() const { return 1; }
   virtual box bounds(int, Transform::ptr) const = 0;
   virtual ball sbounds(int, Transform::ptr) const = 0;
   virtual bool inside(vec const &) const = 0;
-  virtual bool valid(vec const &, int p) const { return true; }
   virtual ~base() = default;
 };
 
@@ -1060,7 +1066,7 @@ struct sphere: base {
   sphere(vec const &c, double r)
     : center(c), radius(r) {}
 
-  double distance(vec const &pos, vec const &dir, int) const {
+  double distance(vec const &pos, vec const &dir) const {
     vec p = pos - center;
     double b = dir | p;
     double c = (p | p) - radius * radius;
@@ -1074,8 +1080,13 @@ struct sphere: base {
     return t1 < 0 ? INFINITY : t1;
   }
 
-  vec normal(vec const &pos, int) const {
-    return normalize(pos - center);
+  double distance(vec const &pos, vec const &dir, contact &, int) const {
+    return distance(pos, dir);
+  }
+
+  bool complete(contact &co, int) const {
+    co.normal = normalize(co.pos - center);
+    return true;
   }
 
   box bounds(int, Transform::ptr t) const {
@@ -1101,7 +1112,7 @@ struct cylinder: base {
   cylinder(vec const &b, vec const &a, double r)
     : basis(b), axis(a), radius(r) {}
 
-  double distance(vec const &pos, vec const &dir, int) const {
+  double distance(vec const &pos, vec const &dir, contact &, int) const {
     vec p = pos - basis;
     double ia2 = 1 / (axis | axis);
     vec q = p - (p | axis) * ia2 * axis;
@@ -1125,10 +1136,11 @@ struct cylinder: base {
     return INFINITY;
   }
 
-  vec normal(vec const &pos, int) const {
-    vec p = pos - basis;
+  bool complete(contact &co, int) const {
+    vec p = co.pos - basis;
     double f = (p | axis) / (axis | axis);
-    return normalize(p - f * axis);
+    co.normal = normalize(p - f * axis);
+    return true;
   }
 
   box bounds(int, Transform::ptr t) const {
@@ -1158,7 +1170,7 @@ struct plane: base {
   double dist;
   plane(vec const &n, double d): normal_(n), dist(d) {}
 
-  double distance(vec const &pos, vec const &dir, int) const {
+  double distance(vec const &pos, vec const &dir, contact &, int) const {
     double d = (pos | normal_) + dist;
     double s = (dir | normal_);
     if (s == 0) return d == 0 ? 0 : INFINITY;
@@ -1166,8 +1178,9 @@ struct plane: base {
     return r < 0 ? INFINITY : r;
   }
 
-  vec normal(vec const &, int) const {
-    return normal_;
+  bool complete(contact &co, int) const {
+    co.normal = normal_;
+    return true;
   }
 
   box bounds(int, Transform::ptr t) const {
@@ -1202,10 +1215,11 @@ struct plane: base {
 struct sdf: base {
   SDF::ptr s;
   sdf(SDF::ptr s_): s(s_) {}
-  double distance(vec const &pos, vec const &dir, int) const;
+  double distance(vec const &pos, vec const &dir, contact &, int) const;
 
-  vec normal(vec const &pos, int) const {
-    return s->normal(pos, 0.);
+  bool complete(contact &co, int) const {
+    co.normal = s->normal(co.pos, 0.);
+    return true;
   }
 
   box bounds(int, Transform::ptr t) const {
@@ -1222,7 +1236,7 @@ struct sdf: base {
   }
 };
 
-double sdf::distance(vec const &pos, vec const &dir, int) const {
+double sdf::distance(vec const &pos, vec const &dir, contact &, int) const {
   double prev = INFINITY;
   bool optimistic = false;
   for (double l = 0; l < Settings::max_depth; ) {
@@ -1266,29 +1280,13 @@ struct mesh: base {
 
   mesh(char const *name, bool = false);
   int subparts() const { return facets.size(); }
+  double distance(vec const &pos, vec const &dir, contact &, int data) const;
+  vec snormal(contact const &) const;
 
-  double distance(vec const &pos, vec const &dir, int data) const {
-    std::array<int, 3> const &f = facets[data];
-    vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
-    vec p10 = p1 - p0, p20 = p2 - p0, p = pos - p0;
-    vec n = cross(p10, p20);
-    double d = p | n;
-    double s = dir | n;
-    double r;
-    if (s == 0) {
-      if (d != 0) return INFINITY;
-      r = 0;
-    } else {
-      r = - d / s;
-      if (r < 0) return INFINITY;
-    }
-    p += r * dir;
-    auto [u, v] = toUV(p10, p20, p);
-    if (u < 0 || v < 0 || u + v > 1) return INFINITY;
-    return r;
+  bool complete(contact &co, int d) const {
+    co.data = d;
+    return true;
   }
-
-  vec normal(vec const &pos, int data) const;
 
   box bounds(int d, Transform::ptr t) const {
     assert(t);
@@ -1375,20 +1373,38 @@ mesh::mesh(char const *name, bool b)
   if (!has_n) facets_n.clear();
 }
 
-vec mesh::normal(vec const &pos, int data) const {
+double mesh::distance(vec const &pos, vec const &dir, contact &co, int data) const {
   std::array<int, 3> const &f = facets[data];
   vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
-  vec p10 = p1 - p0, p20 = p2 - p0;
-  if (facets_n.empty()) {
-    compute_n:
-    vec n = normalize(cross(p10, p20));
-    return inv_normal ? -n : n;
+  vec p10 = p1 - p0, p20 = p2 - p0, p = pos - p0;
+  vec n = cross(p10, p20);
+  double d = p | n;
+  double s = dir | n;
+  double r;
+  if (s == 0) {
+    if (d != 0) return INFINITY;
+    r = 0;
+  } else {
+    r = - d / s;
+    if (r < 0) return INFINITY;
   }
-  auto [u, v] = toUV(p10, p20, pos - p0);
-  std::array<int, 3> const &fn = facets_n[data];
+  p += r * dir;
+  auto [u, v] = toUV(p10, p20, p);
+  if (u < 0 || v < 0 || u + v > 1) return INFINITY;
+  co.pos = p;
+  if (inv_normal) n = -n;
+  co.normal = normalize(n);
+  co.uv = { u, v };
+  return r;
+}
+
+vec mesh::snormal(contact const &co) const {
+  if (facets_n.empty()) return co.normal;
+  std::array<int, 3> const &fn = facets_n[co.data];
   int i0 = fn[0], i1 = fn[1], i2 = fn[2];
-  if (i0 < 0 || i1 < 0 || i2 < 0) goto compute_n;
+  if (i0 < 0 || i1 < 0 || i2 < 0) return co.normal;
   vec const &n0 = normals[i0], &n1 = normals[i1], &n2 = normals[i2];
+  auto [u, v] = co.uv;
   return normalize((1 - u - v) * n0 + u * n1 + v * n2);
 }
 
@@ -1400,14 +1416,15 @@ struct union_: base {
     : obj1(o1), obj2(o2), parts1(obj1->subparts()),
       parts(parts1 + obj2->subparts()) {}
 
-  double distance(vec const &pos, vec const &dir, int p) const {
-    if (p < parts1) return obj1->distance(pos, dir, p);
-    return obj2->distance(pos, dir, p - parts1);
+  double distance(vec const &pos, vec const &dir, contact &co, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, co, p);
+    return obj2->distance(pos, dir, co, p - parts1);
   }
 
-  vec normal(vec const &pos, int p) const {
-    if (p < parts1) return obj1->normal(pos, p);
-    return obj2->normal(pos, p - parts1);
+  bool complete(contact &co, int p) const {
+    if (p < parts1)
+      return obj1->complete(co, p) && !obj2->inside(co.pos);
+    return obj2->complete(co, p - parts1) && !obj1->inside(co.pos);
   }
 
   int subparts() const { return parts; }
@@ -1425,12 +1442,6 @@ struct union_: base {
   bool inside(vec const &pos) const {
     return obj1->inside(pos) || obj2->inside(pos);
   }
-
-  bool valid(vec const &pos, int p) const {
-    if (p < parts1) return obj1->valid(pos, p) && !obj2->inside(pos);
-    return obj2->valid(pos, p - parts1) && !obj1->inside(pos);
-  }
-
 };
 
 struct intersection: base {
@@ -1454,14 +1465,15 @@ struct intersection: base {
     bnds = Box::intersect(bnds, b);
   }
 
-  double distance(vec const &pos, vec const &dir, int p) const {
-    if (p < parts1) return obj1->distance(pos, dir, p);
-    return obj2->distance(pos, dir, p - parts1);
+  double distance(vec const &pos, vec const &dir, contact &co, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, co, p);
+    return obj2->distance(pos, dir, co, p - parts1);
   }
 
-  vec normal(vec const &pos, int p) const {
-    if (p < parts1) return obj1->normal(pos, p);
-    return obj2->normal(pos, p - parts1);
+  bool complete(contact &co, int p) const {
+    if (p < parts1)
+      return obj1->complete(co, p) && obj2->inside(co.pos);
+    return obj2->complete(co, p - parts1) && obj1->inside(co.pos);
   }
 
   int subparts() const { return parts; }
@@ -1479,12 +1491,6 @@ struct intersection: base {
   bool inside(vec const &pos) const {
     return obj1->inside(pos) && obj2->inside(pos);
   }
-
-  bool valid(vec const &pos, int p) const {
-    if (p < parts1) return obj1->valid(pos, p) && obj2->inside(pos);
-    return obj2->valid(pos, p - parts1) && obj1->inside(pos);
-  }
-
 };
 
 struct difference: base {
@@ -1503,14 +1509,17 @@ struct difference: base {
     bnds1 = b;
   }
 
-  double distance(vec const &pos, vec const &dir, int p) const {
-    if (p < parts1) return obj1->distance(pos, dir, p);
-    return obj2->distance(pos, dir, p - parts1);
+  double distance(vec const &pos, vec const &dir, contact &co, int p) const {
+    if (p < parts1) return obj1->distance(pos, dir, co, p);
+    return obj2->distance(pos, dir, co, p - parts1);
   }
 
-  vec normal(vec const &pos, int p) const {
-    if (p < parts1) return obj1->normal(pos, p);
-    return -obj2->normal(pos, p - parts1);
+  bool complete(contact &co, int p) const {
+    if (p < parts1)
+      return obj1->complete(co, p) && !obj2->inside(co.pos);
+    if (!obj2->complete(co, p - parts1)) return false;
+    co.normal = -co.normal;
+    return obj1->inside(co.pos);
   }
 
   int subparts() const { return parts; }
@@ -1528,12 +1537,6 @@ struct difference: base {
   bool inside(vec const &pos) const {
     return obj1->inside(pos) && !obj2->inside(pos);
   }
-
-  bool valid(vec const &pos, int p) const {
-    if (p < parts1) return obj1->valid(pos, p) && !obj2->inside(pos);
-    return obj2->valid(pos, p - parts1) && obj1->inside(pos);
-  }
-
 };
 
 }
@@ -1691,7 +1694,7 @@ struct spherical: base {
     v = normalize(v);
     Vector::cone_uniform_sampler s(v, cmax);
     auto [dir,p] = s.sample();
-    return { { dir, sph->distance(pos, dir, 0) }, p };
+    return { { dir, sph->distance(pos, dir) }, p };
   }
 
   double pdf(vec const &pos, vec const &, vec const &d) const {
@@ -2065,15 +2068,14 @@ void prepare_bounds() {
 }
 
 struct contact {
-  double dist;
-  object const *obj;
+  Solid::contact co;
+  double dist = INFINITY;
+  object const *obj = NULL;
   int data;
 };
 
 contact find_range(vec const &pos, vec const &dir, int ib, int ie) {
-  object const *bo = NULL;
-  double bd = INFINITY;
-  int bi = 0;
+  contact bco;
   for (int i = ib; i < ie; ++i) {
     subobject const &o = subobjects[i];
     object const &obj = Scene::objects[o.obj];
@@ -2083,24 +2085,27 @@ contact find_range(vec const &pos, vec const &dir, int ib, int ie) {
       pos2 = obj.transf->position(pos);
       dir2 = obj.transf->rotate * dir;
     }
+    Solid::contact co;
     double d, d2 = 0.;
     for (;;) {
       d2 += 1e-6;
-      double dd = obj.solid->distance(pos2 + d2 * dir2, dir2, o.data);
+      double dd = obj.solid->distance(pos2 + d2 * dir2, dir2, co, o.data);
       if (dd <= 1e-10) continue;
       if (dd == INFINITY) { d = INFINITY; break; }
       d2 += dd;
       d = d2;
       if (obj.transf) d *= obj.transf->scale;
-      if (d >= bd) break;
-      if (obj.solid->valid(pos2 + d2 * dir2, o.data)) break;
+      if (d >= bco.dist) break;
+      co.pos = pos2 + d2 * dir2;
+      if (obj.solid->complete(co, o.data)) break;
     }
-    if (d >= bd) continue;
-    bo = &obj;
-    bd = d;
-    bi = o.data;
+    if (d >= bco.dist) continue;
+    bco.co = co;
+    bco.dist = d;
+    bco.obj = &obj;
+    bco.data = o.data;
   }
-  return { bd, bo, bi };
+  return bco;
 }
 
 struct boxed_indices {
@@ -2110,7 +2115,7 @@ struct boxed_indices {
 
 contact find_split(vec const &pos, vec const &dir, boxed_indices const &b0, double dmax) {
   if (b0.ib == b0.ie || !Box::intersect(pos, dir, b0.sc->bo, dmax))
-    return { INFINITY, NULL, 0 };
+    return contact();
   if (b0.sc->sp < 0) return find_range(pos, dir, b0.ib, b0.ie);
   split const &s = splits[b0.sc->sp];
   boxed_indices
@@ -2158,7 +2163,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
   sampled_spectrum color(0.), fact(1.);
   bool all_specular = true;
   std::uniform_real_distribution dis(0., 1.);
-  path_point prev { { pos, vec(), vec() }, dir, 0., false };
+  path_point prev { { pos }, dir, 0., false };
   for (int step = 0; step < Settings::max_steps; ++step) {
     ++dbg->rays;
     contact co = find_contact(prev.pt.pos, prev.inc, INFINITY);
@@ -2181,11 +2186,10 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
     */
     path_point curr { { prev.pt.pos + co.dist * prev.inc, vec(), -prev.inc }, vec(), 0., false };
     if (obj.transf) {
-      vec p = obj.transf->position(curr.pt.pos);
-      vec n = obj.solid->normal(p, co.data);
+      vec n = obj.solid->snormal(co.co);
       curr.pt.normal = transpose(obj.transf->rotate) * n;
     } else {
-      curr.pt.normal = obj.solid->normal(curr.pt.pos, co.data);
+      curr.pt.normal = obj.solid->snormal(co.co);
     }
     Material::ptr mat = obj.material;
     if (mat->kind != Material::Transmitive && (curr.pt.out | curr.pt.normal) < 1e-10) break;
