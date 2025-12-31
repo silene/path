@@ -786,6 +786,29 @@ mat XYZtoRGB = {
   0.0052037,   -0.01440816, 1.00920446
 };
 
+sampled_spectrum fromXYZ(vec const &c, sampled_wl const &wl) {
+  double t = c[0] + c[1] + c[2];
+  if (t == 0.) return sampled_spectrum(0.);
+  int x = (c[0] / t) * 19, y = (1 - c[1] / t) * 19;
+  assert(0 <= x && x < 20 && 0 <= y && y < 20);
+  int val = palette[y][x];
+  sampled_spectrum s;
+  for (int i = 0; i < nb_s; ++i) {
+    int l = 15 * (wl.lambda[i] - min_wl) / (max_wl - min_wl);
+    s[i] = (3 & (val >> (2 * l))) * c[1] / 3;
+  }
+  return s;
+}
+
+struct from_texture: base {
+  image const *img;
+  from_texture(image const *i): img(i) {}
+  sampled_spectrum sample(point2 const &uv, sampled_wl const &wl) const {
+    vec c = img->read(uv[0] * (img->width - 1), (1 - uv[1]) * (img->height - 1));
+    return fromXYZ(RGBtoXYZ * c, wl);
+  }
+};
+
 using ptr = Spectrum::base const *;
 
 }
