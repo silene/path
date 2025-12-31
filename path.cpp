@@ -1310,6 +1310,7 @@ struct mesh: base {
   int subparts() const { return facets.size(); }
   double distance(vec const &pos, vec const &dir, contact &, int data) const;
   vec snormal(contact const &) const;
+  point2 uv(contact const &) const;
 
   bool complete(contact &co, int d) const {
     co.data = d;
@@ -1434,6 +1435,18 @@ vec mesh::snormal(contact const &co) const {
   vec const &n0 = normals[i0], &n1 = normals[i1], &n2 = normals[i2];
   auto [u, v] = co.uv;
   return normalize((1 - u - v) * n0 + u * n1 + v * n2);
+}
+
+point2 mesh::uv(contact const &co) const {
+  if (facets_uv.empty()) return { 0., 0. };
+  std::array<int, 3> const &ft = facets_uv[co.data];
+  int i0 = ft[0], i1 = ft[1], i2 = ft[2];
+  if (i0 < 0 || i1 < 0 || i2 < 0) return { 0., 0. };
+  point2 const &t0 = textures[i0], &t1 = textures[i1], &t2 = textures[i2];
+  auto [u, v] = co.uv;
+  return {
+    std::clamp((1 - u - v) * t0[0] + u * t1[0] + v * t2[0], 0., 1.),
+    std::clamp((1 - u - v) * t0[1] + u * t1[1] + v * t2[1], 0., 1.) };
 }
 
 struct union_: base {
