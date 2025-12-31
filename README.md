@@ -53,7 +53,7 @@ Supported features:
 
 - Raymarching using signed distance functions.
 
-- Meshes using the `.obj` format.
+- Triangulated meshes using the `.obj` format with textures using the `.ppm` format.
 
 - Spectral distributions.
 
@@ -64,7 +64,9 @@ Caveats:
 
 - There is neither path regularization nor bidirectional illumination,
   so diffuse surfaces indirectly illuminated by reflective or
-  refractive bounces will look very noisy.
+  refractive materials will look very noisy.
+
+- Texture colors are poorly approximated by spectral distributions.
 
 - Too many caveats to list exhaustively.
 
@@ -75,3 +77,4 @@ not a good practice either.
 ![Image generated for the "spheres" example.](examples/spheres.jpg)
 ![Image generated for the "sdf" example.](examples/sdf.jpg)
 ![Image generated for the "bunny" example.](examples/bunny.jpg)
+![Image generated for the "spot" example.](examples/spot.jpg)
