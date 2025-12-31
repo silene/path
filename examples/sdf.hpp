@@ -44,7 +44,7 @@ std::vector<Light::ptr> lights {
       0.997, 0.99 } },
   { new Light::directional {
       new Spectrum::blackbody { 1.5, 4300 },
-      Vector::normalize({ 0.2, -0.8, 0.3 }) } },
+      Vector::normalize({ -0.2, 0.8, -0.3 }) } },
 };
 
 std::vector<object> objects {

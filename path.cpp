@@ -1663,7 +1663,7 @@ struct directional: base {
   vec dir;
 
   directional(Spectrum::ptr s, vec const &d)
-    : base(false, false), sp(s), dir(-d) {}
+    : base(false, false), sp(s), dir(d) {}
 
   biased<ray> sample(vec const &, vec const &) const {
     return { { dir, INFINITY }, Dirac };
