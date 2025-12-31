@@ -139,6 +139,8 @@ void spawn(std::function<void(int)> const &f, int n) {
 template<class T>
 using biased = std::pair<T, double>;
 
+using point2 = std::array<double, 2>;
+
 // Computations should be invariant wrt this arbitrarily large value.
 // Taken as 1 to avoid numerical issues.
 double const Dirac = 1.;
@@ -637,12 +639,12 @@ vec toXYZ(full_spectrum const &s) {
   return (1 / sumY) * c;
 }
 
-struct spectrum_base {
-  virtual sampled_spectrum sample(sampled_wl const &) const = 0;
-  virtual ~spectrum_base() = default;
+struct base {
+  virtual sampled_spectrum sample(point2 const &, sampled_wl const &) const = 0;
+  virtual ~base() = default;
 };
 
-struct blackbody: spectrum_base {
+struct blackbody: base {
   double strength;
   int temp;
   //full_spectrum fsp;
@@ -662,7 +664,7 @@ struct blackbody: spectrum_base {
     return 2 * h * c * c / (l5 * (exp((h * c) / (l * kb * temp)) - 1));
   }
 
-  sampled_spectrum sample(sampled_wl const &l) const {
+  sampled_spectrum sample(point2 const &, sampled_wl const &l) const {
     sampled_spectrum s;
     for (int i = 0; i < nb_s; ++i) {
       s[i] = aux(l.lambda[i]) * strength;
@@ -671,25 +673,25 @@ struct blackbody: spectrum_base {
   }
 };
 
-struct uniform: spectrum_base {
+struct uniform: base {
   double strength;
   uniform(double s): strength(s) {}
-  sampled_spectrum sample(sampled_wl const &) const {
+  sampled_spectrum sample(point2 const &, sampled_wl const &) const {
     return sampled_spectrum(strength);
   }
 };
 
-struct sampled: spectrum_base {
+struct sampled: base {
   typedef std::vector<std::pair<double,double>> samples_t;
   samples_t samples;
   sampled(samples_t const &s): samples(s) {
     assert(s.size() != 0);
   }
-  sampled_spectrum sample(sampled_wl const &wl) const;
+  sampled_spectrum sample(point2 const &, sampled_wl const &wl) const;
 
 };
 
-sampled_spectrum sampled::sample(sampled_wl const &wl) const {
+sampled_spectrum sampled::sample(point2 const &, sampled_wl const &wl) const {
   sampled_spectrum sp;
   for (int i = 0; i < nb_s; ++i) {
     double l = wl.lambda[i];
@@ -710,14 +712,15 @@ sampled_spectrum sampled::sample(sampled_wl const &wl) const {
   return sp;
 }
 
-struct from_wl: spectrum_base {
+struct from_wl: base {
   double strength, fact;
   double lambda, width;
   from_wl(double s, double l, double w)
     : strength(s), lambda(l), width(w) {
     fact = 1.; // / (width * sqrt(2 * M_PI));
   }
-  sampled_spectrum sample(sampled_wl const &wl) const {
+
+  sampled_spectrum sample(point2 const &, sampled_wl const &wl) const {
     sampled_spectrum s;
     double w = max_wl - min_wl;
     for (int i = 0; i < nb_s; ++i) {
@@ -755,12 +758,13 @@ int palette[20][20] = {
   { 0x3, 0, 0x3f0003ff, 0x3ec003ff, 0x3f9000ff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
 };
 
-struct from_palette: spectrum_base {
+struct from_palette: base {
   double strength;
   int val;
   from_palette(double s, int x, int y)
     : strength(s), val(palette[y][x]) {}
-  sampled_spectrum sample(sampled_wl const &wl) const {
+
+  sampled_spectrum sample(point2 const &, sampled_wl const &wl) const {
     sampled_spectrum s;
     for (int i = 0; i < nb_s; ++i) {
       int l = 15 * (wl.lambda[i] - min_wl) / (max_wl - min_wl);
@@ -782,7 +786,7 @@ mat XYZtoRGB = {
   0.0052037,   -0.01440816, 1.00920446
 };
 
-using ptr = Spectrum::spectrum_base const *;
+using ptr = Spectrum::base const *;
 
 }
 
@@ -1043,7 +1047,7 @@ namespace Solid {
 
 struct contact {
   vec pos, normal; // in the local basis
-  std::array<double, 2> uv;
+  point2 uv;
   int data;
 };
 
@@ -1051,6 +1055,7 @@ struct base {
   virtual double distance(vec const &, vec const &, contact &, int) const = 0;
   virtual bool complete(contact &, int) const = 0;
   virtual vec snormal(contact const &co) const { return co.normal; }
+  virtual point2 uv(contact const &) const { return { 0., 0. }; }
   virtual int subparts() const { return 1; }
   virtual box bounds(int, Transform::ptr) const = 0;
   virtual ball sbounds(int, Transform::ptr) const = 0;
@@ -1259,7 +1264,7 @@ double sdf::distance(vec const &pos, vec const &dir, contact &, int) const {
   return INFINITY;
 }
 
-std::pair<double, double> toUV(vec p, vec q, vec r) {
+point2 toUV(vec p, vec q, vec r) {
   // the barycentric coordinates u, v, 1-u-v are proportional
   // to the areas of the three subtriangles opr, oqr, pqr
   vec n = cross(p, q);
@@ -1272,7 +1277,7 @@ std::pair<double, double> toUV(vec p, vec q, vec r) {
 struct mesh: base {
   std::vector<vec> vertices;
   std::vector<vec> normals;
-  std::vector<std::array<double, 2>> textures;
+  std::vector<point2> textures;
   std::vector<std::array<int, 3>> facets;
   std::vector<std::array<int, 3>> facets_n;
   std::vector<std::array<int, 3>> facets_uv;
@@ -1364,7 +1369,7 @@ mesh::mesh(char const *name, bool b)
       std::istringstream l(line);
       l.ignore(3);
       textures.resize(textures.size() + 1);
-      std::array<double, 2> &v = textures.back();
+      point2 &v = textures.back();
       l >> v[0] >> v[1];
     } else continue;
   }
@@ -1543,6 +1548,7 @@ struct difference: base {
 
 struct intersection {
   vec pos, normal, out;
+  point2 uv;
 };
 
 struct path_point {
@@ -1585,7 +1591,7 @@ struct point: base {
   sampled_spectrum get_sp(vec const &p, vec const &, sampled_wl const &wl) const {
     vec d = pos - p;
     double f = 1 / (d | d);
-    return Dirac * f * sp->sample(wl);
+    return Dirac * f * sp->sample({}, wl);
   }
 };
 
@@ -1612,7 +1618,7 @@ struct spot: base {
     if (g <= angle2) return sampled_spectrum(0.);
     double f = 1 / (dist * dist);
     if (g <= angle1) f = f * (g - angle2) / (angle1 - angle2);
-    return Dirac * f * sp->sample(wl);
+    return Dirac * f * sp->sample({}, wl);
   }
 };
 
@@ -1628,7 +1634,7 @@ struct directional: base {
   }
 
   sampled_spectrum get_sp(vec const &, vec const &, sampled_wl const &wl) const {
-    return Dirac * sp->sample(wl);
+    return Dirac * sp->sample({}, wl);
   }
 };
 
@@ -1654,7 +1660,7 @@ struct multidirectional: base {
 
   sampled_spectrum get_sp(vec const &, vec const &d, sampled_wl const &wl) const {
     if ((dir | d) <= cmax) return { 0. };
-    return inv_area * sp->sample(wl);
+    return inv_area * sp->sample({}, wl);
   }
 };
 
@@ -1675,7 +1681,7 @@ struct uniform: base {
   }
 
   sampled_spectrum get_sp(vec const &, vec const &, sampled_wl const &wl) const {
-    return sp->sample(wl);
+    return sp->sample({}, wl);
   }
 };
 
@@ -1706,7 +1712,7 @@ struct spherical: base {
   }
 
   sampled_spectrum get_sp(vec const &pos, vec const &dir, sampled_wl const &wl) const {
-    return strength * sp->sample(wl);
+    return strength * sp->sample({}, wl);
   }
 };
 
@@ -1782,7 +1788,7 @@ struct lambertian: material_base {
 
   sampled_spectrum bxdf(intersection const &pt, vec const &inc, sampled_wl const &wl) const {
     double f = (inc | pt.normal) * M_1_PI;
-    return f * sp->sample(wl);
+    return f * sp->sample(pt.uv, wl);
   }
 
   double pdf(intersection const &pt, vec const &inc) const {
@@ -1794,7 +1800,7 @@ struct lambertian: material_base {
     Vector::hemisphere_linear_sampler s(pt.normal);
     auto [inc, pdf] = s.sample();
     double f = (inc | pt.normal) * M_1_PI;
-    return { { f * sp->sample(wl), inc, Diffuse }, pdf };
+    return { { f * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
   }
 };
 
@@ -1818,7 +1824,7 @@ struct rough: material_base {
     assert (cm > 0);
     double s = scaling * exp(log(cm) * alpha);
     double v = (1 - roughness) + roughness * ci;
-    return v * s * sp->sample(wl);
+    return v * s * sp->sample(pt.uv, wl);
   }
 
   double pdf(intersection const &pt, vec const &inc) const {
@@ -1831,7 +1837,7 @@ struct rough: material_base {
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
     if (specular) {
       vec inc = reflect(pt.normal, pt.out);
-      return { { sp->sample(wl), inc, Specular }, 1. };
+      return { { sp->sample(pt.uv, wl), inc, Specular }, 1. };
     }
     Vector::hemisphere_power_sampler samp(pt.normal, alpha);
     auto [m, pdf] = samp.sample();
@@ -1844,7 +1850,7 @@ struct rough: material_base {
     double cm = m | pt.normal;
     double s = scaling * exp(log(cm) * alpha);
     double v = (1 - roughness) + roughness * ci;
-    return { { v * s * sp->sample(wl), inc, Diffuse }, pdf };
+    return { { v * s * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
   }
 
   material_base const *regularize() const {
@@ -1861,7 +1867,7 @@ struct reflective: material_base {
 
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
     vec inc = reflect(pt.normal, pt.out);
-    sampled_spectrum eta_ = eta->sample(wl), ext = extinct->sample(wl);
+    sampled_spectrum eta_ = eta->sample({}, wl), ext = extinct->sample({}, wl);
     sampled_spectrum sp;
     for (int i = 0; i < Spectrum::nb_s; ++i) {
       sp[i] = metal(pt.normal, pt.out, std::complex(eta_[i], ext[i]));
@@ -2191,6 +2197,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
     } else {
       curr.pt.normal = obj.solid->snormal(co.co);
     }
+    curr.pt.uv = obj.solid->uv(co.co);
     Material::ptr mat = obj.material;
     if (mat->kind != Material::Transmitive && (curr.pt.out | curr.pt.normal) < 1e-10) break;
     if (mat->kind == Material::Emissive) {
