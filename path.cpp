@@ -1857,17 +1857,17 @@ struct rough: material_base {
     assert(!specular);
     double ci = inc | pt.normal;
     double cm = normalize(inc + pt.out) | pt.normal;
-    assert (cm > 0);
+    assert(cm > 0);
     double s = scaling * exp(log(cm) * alpha);
-    double v = (1 - roughness) + roughness * ci;
-    return v * s * sp->sample(pt.uv, wl);
+    double v = s * (1 - roughness) + roughness * ci;
+    return v * sp->sample(pt.uv, wl);
   }
 
   double pdf(intersection const &pt, vec const &inc) const {
     assert(!specular);
     Vector::hemisphere_power_sampler samp(pt.normal, alpha);
     vec m = normalize(inc + pt.out);
-    return samp.pdf(m) / 4 * (m | pt.out);
+    return samp.pdf(m) / (4 * (m | pt.out));
   }
 
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
@@ -1885,8 +1885,8 @@ struct rough: material_base {
     if (ci < 1e-6) return { { sampled_spectrum(0.), vec() }, 0. };
     double cm = m | pt.normal;
     double s = scaling * exp(log(cm) * alpha);
-    double v = (1 - roughness) + roughness * ci;
-    return { { v * s * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
+    double v = s * (1 - roughness) + roughness * ci;
+    return { { v * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
   }
 
   material_base const *regularize() const {
