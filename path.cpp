@@ -141,6 +141,18 @@ using biased = std::pair<T, double>;
 
 using point2 = std::array<double, 2>;
 
+point2 disk_uniform_sampler() {
+  std::uniform_real_distribution dis(-1., 1.);
+  point2 res;
+  for (;;) {
+    res[0] = dis(*rng);
+    res[1] = dis(*rng);
+    double l = res[0] * res[0] + res[1] * res[1];
+    if (l > 1 || l < 1e-6) continue;
+    return res;
+  }
+}
+
 // Computations should be invariant wrt this arbitrarily large value.
 // Taken as 1 to avoid numerical issues.
 double const Dirac = 1.;
@@ -498,6 +510,13 @@ mat rotation(vec const &v, double a) {
     res[i] += cc * v[i / 3] * v[i % 3];
   }
   return res;
+}
+
+mat rotation_zy(vec const &z, vec const &y) {
+  vec p = normalize(z);
+  vec q = normalize(cross(y, p));
+  vec r = normalize(cross(p, q));
+  return { q[0], r[0], p[0], q[1], r[1], p[1], q[2], r[2], p[2] };
 }
 
 }
@@ -2008,6 +2027,54 @@ struct object {
   Transform::ptr transf;
 };
 
+namespace Camera {
+
+struct camera {
+  virtual std::pair<vec, vec> get(double fx, double fy) const = 0;
+  virtual ~camera() {}
+};
+
+struct simple: camera {
+  vec pos;
+  mat rot;
+  simple(vec const &p, mat const &r)
+    : pos(p), rot(r) {}
+  simple(vec const &p, vec const &t, vec const &y)
+    : pos(p), rot(Matrix::rotation_zy(t - p, y)) {}
+  simple(vec const &p, vec const &t)
+    : simple(p, t, vec { 0., 1., 0. }) {}
+  std::pair<vec, vec> get(double fx, double fy) const;
+};
+
+std::pair<vec, vec> simple::get(double fx, double fy) const {
+  vec d { fx, fy, 1. };
+  return { pos, normalize(rot * d) };
+}
+
+struct simple_lens: simple {
+  double lens, focal;
+  simple_lens(vec const &p, mat const &r, double l, double f)
+    : simple(p, r), lens(l), focal(f) {}
+  simple_lens(vec const &p, vec const &t, double l, vec const &y)
+    : simple(p, t, y), lens(l), focal(norm(t - p)) {}
+  simple_lens(vec const &p, vec const &t, double l)
+    : simple_lens(p, t, l, vec { 0., 1., 0. }) {}
+  std::pair<vec, vec> get(double fx, double fy) const;
+};
+
+std::pair<vec, vec> simple_lens::get(double fx, double fy) const {
+  // Take a random point on the lens as the start of the ray,
+  // and direct the ray toward the point on the focal plane
+  // that would have been targeted if there was no lens.
+  point2 l = disk_uniform_sampler();
+  vec s = lens * vec { l[0], l[1], 0. };
+  vec d { fx, fy, 1. };
+  d = focal * d - s;
+  return { pos + rot * s, normalize(rot * d) };
+}
+
+}
+
 #define SCENE
 #include USERDATA
 #undef SCENE
@@ -2323,17 +2390,6 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
   return color;
 }
 
-sampled_spectrum ray(double fx, double fy, sampled_wl const &wl) {
-  auto const &m = Camera::dir;
-  vec dir = {
-    m[0] * fx + m[1] * fy + m[2],
-    m[3] * fx + m[4] * fy + m[5],
-    m[6] * fx + m[7] * fy + m[8],
-  };
-  dir = normalize(dir);
-  return path(Camera::pos, dir, wl);
-}
-
 }
 
 struct sampler {
@@ -2383,7 +2439,8 @@ void pixel(image &img, int x, int y) {
     double t = dis(*rng);
     sampled_wl wl { (1 - t) * Spectrum::min_wl + t * Spectrum::max_wl };
     int wh = std::max(img.width, img.height);
-    sampled_spectrum s = Solver::ray((x + dx - img.width / 2) / wh, - (y + dy - img.height / 2) / wh, wl);
+    auto [camp, camd] = Camera::camera->get((x + dx - img.width / 2) / wh, - (y + dy - img.height / 2) / wh);
+    sampled_spectrum s = Solver::path(camp, camd, wl);
     Spectrum::add(sp, wl, s);
     for (int i = 0; i < Spectrum::nb_s; ++i)
       st += Spectrum::toY(wl.lambda[i]) * s[i] / wl.pdf[i];

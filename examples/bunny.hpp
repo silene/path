@@ -32,13 +32,13 @@ std::vector<object> objects {
 
 namespace Camera {
 
-vec pos { 0.9, 2., -5. };
-
-std::array<double, 9> dir = {
-  1., 0., 0.,
-  0., cos(0.45), -sin(0.45),
-  0., sin(0.45), cos(0.45)
-};
+camera const *camera = new simple {
+  vec { 0.9, 2., -5. },
+  mat {
+    1., 0., 0.,
+    0., cos(0.45), -sin(0.45),
+    0., sin(0.45), cos(0.45)
+  } };
 
 }
 #endif

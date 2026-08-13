@@ -88,14 +88,10 @@ std::vector<object> objects {
 
 namespace Camera {
 
-vec pos { 0.8, 2., -5. };
-
-std::array<double, 9> dir = {
-  1., 0., 0.,
-  0., cos(0.4), -sin(0.4),
-  0., sin(0.4), cos(0.4)
-};
+camera const *camera = new simple_lens {
+  vec { 0.8, 2., -5. },
+  vec { 0.7, 0.1, -0.8 },
+  0.05 };
 
 }
 #endif
-
