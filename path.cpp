@@ -390,13 +390,20 @@ box const empty { { INFINITY, INFINITY, INFINITY }, { -INFINITY, -INFINITY, -INF
 
 box const whole { { -INFINITY, -INFINITY, -INFINITY }, { INFINITY, INFINITY, INFINITY } };
 
-bool intersect(vec const &pos, vec const &dir, box const &b, double dmax) {
+struct checker {
+  Vector::small pos, invdir;
+  checker(vec const &p, vec const &d)
+    : pos(p)
+  { for (int i = 0; i < 3; ++i) { invdir[i] = 1.f / d[i]; } }
+  bool operator()(box const &b, double dmax) const;
+};
+
+bool checker::operator()(box const &b, double dmax) const {
   ++dbg->boxes;
-  double v1 = 0, v2 = dmax;
+  float v1 = 0, v2 = dmax;
   for (int i = 0; i < 3; ++i) {
-    double d = 1 / dir[i];
-    double t1 = (b.p1[i] - pos[i]) * d;
-    double t2 = (b.p2[i] - pos[i]) * d;
+    float t1 = (b.p1[i] - pos[i]) * invdir[i];
+    float t2 = (b.p2[i] - pos[i]) * invdir[i];
     if (t2 < t1) std::swap(t1, t2);
     if (t1 > v1) v1 = t1;
     if (t2 < v2) v2 = t2;
@@ -2115,13 +2122,11 @@ struct boxed_subobject {
 };
 
 struct split {
+  // If axis is negative, [left,right) is the range of subobjects.
+  // Otherwise, left, center, and right are the indices of the children.
   int axis;
-  int before, after;
-  struct child {
-    box bo;
-    int sp;
-  };
-  child left, center, right;
+  int left, center, right;
+  box bo;
 };
 
 std::vector<split> splits;
@@ -2141,13 +2146,12 @@ struct bs_part {
   }
 };
 
-split::child split_objs(std::vector<boxed_subobject> &bs, int ib, int ie, int ax, int axm) {
+int split_objs(std::vector<boxed_subobject> &bs, int ib, int ie, int ax, int axm) {
+  if (ib == ie) return -1;
   if (ie - ib <= 1) {
-    box b = Box::empty;
-    for (int i = ib; i < ie; ++i) {
-      b = merge(b, bs[i].bo);
-    }
-    return { b, -1 };
+    box b = ie > ib ? bs[ib].bo : Box::empty;
+    splits.push_back(split { -1, ib, -1, ie, b } );
+    return splits.size() - 1;
   }
   std::sort(&bs[ib], &bs[ie], bs_cmp { ax });
   int im = (ib + ie) / 2;
@@ -2158,13 +2162,18 @@ split::child split_objs(std::vector<boxed_subobject> &bs, int ib, int ie, int ax
     if (++ax == 3) ax = 0;
     return split_objs(bs, ib, ie, ax, axm);
   }
-  splits.push_back(split { ax, im, in });
-  int is = splits.size() - 1;
-  if (++ax == 3) ax = 0;
-  splits[is].left = split_objs(bs, ib, im, ax, -1);
-  splits[is].center = split_objs(bs, im, in, ax, -1);
-  splits[is].right = split_objs(bs, in, ie, ax, -1);
-  return { merge(merge(splits[is].left.bo, splits[is].center.bo), splits[is].right.bo), is };
+  //if (ax == axm && in == ie) goto no_split;
+  int axn = ax;
+  if (++axn == 3) axn = 0;
+  int il = split_objs(bs, ib, im, axn, -1);
+  int ic = split_objs(bs, im, in, axn, -1);
+  int ir = split_objs(bs, in, ie, axn, -1);
+  box b = Box::empty;
+  if (il >= 0) b = merge(b, splits[il].bo);
+  if (ic >= 0) b = merge(b, splits[ic].bo);
+  if (ir >= 0) b = merge(b, splits[ir].bo);
+  splits.push_back(split { ax, il, ic, ir, b });
+  return splits.size() - 1;
 }
 
 std::vector<Light::ptr> distant_lights;
@@ -2201,8 +2210,18 @@ struct contact {
   int data;
 };
 
-contact find_range(vec const &pos, vec const &dir, int ib, int ie) {
-  contact bco;
+struct contact_finder {
+  vec pos, dir;
+  Box::checker checker;
+  contact_finder(vec const &p, vec const &d)
+    : pos(p), dir(d), checker(p, d) {}
+  bool check_range(int ib, int ie, contact &) const;
+  bool check_split(int sp, contact &) const;
+  contact operator()(double dmax) const;
+};
+
+bool contact_finder::check_range(int ib, int ie, contact &bco) const {
+  bool res = false;
   for (int i = ib; i < ie; ++i) {
     subobject const &o = subobjects[i];
     object const &obj = Scene::objects[o.obj];
@@ -2231,41 +2250,30 @@ contact find_range(vec const &pos, vec const &dir, int ib, int ie) {
     bco.dist = d;
     bco.obj = &obj;
     bco.data = o.data;
+    res = true;
   }
-  return bco;
+  return res;
 }
 
-struct boxed_indices {
-  int ib, ie;
-  split::child const *sc;
-};
-
-contact find_split(vec const &pos, vec const &dir, boxed_indices const &b0, double dmax) {
-  if (b0.ib == b0.ie || !Box::intersect(pos, dir, b0.sc->bo, dmax))
-    return contact();
-  if (b0.sc->sp < 0) return find_range(pos, dir, b0.ib, b0.ie);
-  split const &s = splits[b0.sc->sp];
-  boxed_indices
-    b1 { b0.ib, s.before, &s.left },
-    b2 { s.before, s.after, &s.center },
-    b3 { s.after, b0.ie, &s.right } ;
-  if (dir[s.axis] < 0) { std::swap(b1, b3); }
-  contact r1 = find_split(pos, dir, b1, dmax);
-  if (r1.obj) { dmax = std::min(dmax, r1.dist); }
-  contact r2 = find_split(pos, dir, b2, dmax);
-  if (r2.obj) { dmax = std::min(dmax, r2.dist); }
-  if (!r1.obj) { r1 = find_split(pos, dir, b3, dmax); }
-  if (!r1.obj) return r2;
-  return r2.obj && r2.dist < r1.dist ? r2 : r1;
+bool contact_finder::check_split(int sp, contact &co) const {
+  if (sp < 0) return false;
+  split const &s = splits[sp];
+  if (!checker(s.bo, co.dist)) return false;
+  if (s.axis < 0)
+    return check_range(s.left, s.right, co);
+  int sl = s.left, sr = s.right;
+  if (dir[s.axis] < 0) { std::swap(sl, sr); }
+  bool bl = check_split(sl, co);
+  bool br = check_split(s.center, co);
+  if (bl) return true;
+  return check_split(sr, co) | br;
 }
 
-contact find_contact(vec const &pos, vec const &dir, double dmax) {
-  int nb = subobjects.size();
-  if (splits.empty())
-    return find_range(pos, dir, 0, nb);
-  split::child init { Box::whole, 0 };
-  boxed_indices b { 0, nb, &init };
-  return find_split(pos, dir, b, dmax);
+contact contact_finder::operator()(double dmax) const {
+  contact co;
+  co.dist = dmax;
+  check_split(splits.size() - 1, co);
+  return co;
 }
 
 double mis_weight(double x, double y) {
@@ -2293,7 +2301,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
   path_point prev { { pos }, dir, 0., false };
   for (int step = 0; step < Settings::max_steps; ++step) {
     ++dbg->rays;
-    contact co = find_contact(prev.pt.pos, prev.inc, INFINITY);
+    contact co = contact_finder(prev.pt.pos, prev.inc)(INFINITY);
     if (!co.obj) {
       if (Settings::shadows != Settings::Weighted && prev.already_illuminated) break;
       for (Light::ptr l: distant_lights) {
@@ -2358,7 +2366,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
       sampled_spectrum sp = l->get_sp(curr.pt.pos, r.dir, wl);
       if (sp.zero()) goto no_illumination;
       ++dbg->irays;
-      contact co = find_contact(curr.pt.pos, r.dir, r.dist);
+      contact co = contact_finder(curr.pt.pos, r.dir)(r.dist);
       if (co.obj && co.dist < r.dist) {
         Material::ptr mo = co.obj->material;
         if (mo->kind != Material::Emissive) goto no_illumination;
