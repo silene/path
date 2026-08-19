@@ -2157,6 +2157,11 @@ int split_objs(std::vector<boxed_subobject> &bs, int ib, int ie, int ax, int axm
   int im = (ib + ie) / 2;
   double v = bs[im - 1].bo.p2[ax];
   int in = std::partition(&bs[im], &bs[ie], bs_part { v, ax }) - &bs[0];
+  if (im > ib + 1) {
+    im = std::max(ib + 1, (3 * im - in) / 2);
+    v = bs[im - 1].bo.p2[ax];
+    in = std::partition(&bs[im], &bs[in], bs_part { v, ax }) - &bs[0];
+  }
   if (ax != axm && 4 * in >= ib + 3 * ie) {
     if (axm < 0) axm = ax;
     if (++ax == 3) ax = 0;
@@ -2202,6 +2207,28 @@ void prepare_bounds() {
     subobjects.push_back(subobject { b.obj, b.data });
   }
 }
+
+#if 0
+void print_splits(int si, int d) {
+  std::string indent(d, ' ');
+  if (si < 0) {
+    std::cout << indent << "{},\n";
+    return;
+  }
+  split const &s = splits[si];
+  if (s.axis < 0) {
+    std::cout << indent << "{ ";
+    for (int i = s.left; i < s.right; ++i) std::cout << i << ", ";
+    std::cout << "},\n";
+    return;
+  }
+  std::cout << indent << "{ axis = " << s.axis << ",\n";
+  print_splits(s.left, d + 2);
+  print_splits(s.center, d + 2);
+  print_splits(s.right, d + 2);
+  std::cout << indent << "},\n";
+}
+#endif
 
 struct contact {
   Solid::contact co;
@@ -2471,6 +2498,7 @@ void pixel(image &img, int x, int y) {
 int main() {
   Solver::prepare_lights();
   Solver::prepare_bounds();
+  //Solver::print_splits(Solver::splits.size() - 1, 0);
   int w = Settings::width, h = Settings::height;
   int b = 8;
   image img(w, h);
