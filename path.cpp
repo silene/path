@@ -280,6 +280,88 @@ using vec = Vector::vec;
 
 namespace Sampler {
 
+struct discrete {
+  std::vector<float> probas;
+  std::vector<std::pair<float, int>> aliases;
+  double sum;
+  discrete() = default;
+  discrete(int nb, float const *);
+  biased<int> sample() const;
+  double pdf(int i) const { return sum ? probas[i] : 0.; }
+};
+
+discrete::discrete(int nb, float const *d)
+  : probas(d, d + nb) {
+  sum = 0.;
+  for (float f: probas) sum += f;
+  if (!sum) return;
+  float is = 1. / sum;
+  for (float &f: probas) f *= is;
+  std::vector<std::pair<int, float>> under, over;
+  aliases.resize(nb);
+  for (int i = 0; i != nb; ++i) {
+    float f = probas[i] * nb;
+    if (f < 1.f) under.emplace_back(i, f);
+    else over.emplace_back(i, f);
+  }
+  while (!under.empty()) {
+    std::pair<int, float> uv = under.back();
+    under.pop_back();
+    if (over.empty()) {
+      // should not happen, except for rounding errors
+      aliases[uv.first] = std::make_pair(1.f, -1);
+      continue;
+    }
+    std::pair<int, float> ov = over.back();
+    over.pop_back();
+    aliases[uv.first] = std::make_pair(uv.second, ov.first);
+    ov.second -= 1.f - uv.second;
+    if (ov.second < 1.f) under.push_back(ov);
+    else over.push_back(ov);
+  }
+  for (auto ov: over) {
+    aliases[ov.first] = std::make_pair(1.f, -1);
+  }
+}
+
+biased<int> discrete::sample() const {
+  assert(sum);
+  std::uniform_int_distribution<int> dis(0, probas.size() - 1);
+  std::uniform_real_distribution dis2(0., 1.);
+  int i = dis(*rng);
+  if (dis2(*rng) > aliases[i].first) i = aliases[i].second;
+  return { i, probas[i] };
+}
+
+struct discrete2D {
+  discrete data;
+  std::vector<discrete> rows;
+  discrete2D() = default;
+  discrete2D(int w, int h, float const *);
+  biased<std::pair<int,int>> sample() const;
+
+  double pdf(int x, int y) const {
+    return data.pdf(y) * rows[y].pdf(x);
+  }
+};
+
+discrete2D::discrete2D(int w, int h, float const *d) {
+  std::vector<float> r;
+  rows.reserve(h);
+  r.reserve(h);
+  for (int i = 0; i < h; ++i) {
+    rows.emplace_back(w, d + i * w);
+    r.push_back(rows.back().sum);
+  }
+  data = discrete(h, &r[0]);
+}
+
+biased<std::pair<int,int>> discrete2D::sample() const {
+  auto [y, py] = data.sample();
+  auto [x, px] = rows[y].sample();
+  return { { x, y }, px * py };
+}
+
 point2 disk_uniform() {
   std::uniform_real_distribution dis(-1., 1.);
   point2 res;
