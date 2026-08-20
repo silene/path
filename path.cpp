@@ -259,7 +259,6 @@ vec mix(vec const &u, vec const &v, double k) {
   return (1 - k) * u + k * v;
 }
 
-
 vec operator*(vec const &u, vec const &v) {
   vec w;
   for (int i = 0; i < 3; ++i) { w[i] = u[i] * v[i]; }
@@ -960,6 +959,7 @@ static int constexpr compact_sp[20][20] = {
   static double factors[20][20];
   palette();
   static sampled_spectrum get(int x, int y, sampled_wl const &wl);
+  static sampled_spectrum get(double x, double y, sampled_wl const &wl);
 };
 
 double palette::factors[20][20];
@@ -995,12 +995,24 @@ sampled_spectrum palette::get(int x, int y, sampled_wl const &wl) {
   return s;
 }
 
+sampled_spectrum palette::get(double x, double y, sampled_wl const &wl) {
+  int xi = x, yi = y;
+  int xj = std::min(xi + 1, 19), yj = std::min(yi + 1, 19);
+  double xf = x - xi, yf = y - yi;
+  sampled_spectrum sp[4] = {
+    get(xi, yi, wl), get(xj, yi, wl), get(xi, yj, wl), get(xj, yj, wl)
+  };
+  sampled_spectrum pi = (1. - xf) * sp[0] + xf * sp[1];
+  sampled_spectrum pj = (1. - xf) * sp[2] + xf * sp[3];
+  return (1. - yf) * pi + yf * pj;
+}
+
 palette palette;
 
 struct from_palette: base {
   double strength;
-  int x, y;
-  from_palette(double s, int x_, int y_)
+  double x, y;
+  from_palette(double s, double x_, double y_)
     : strength(s), x(x_), y(y_) {}
 
   sampled_spectrum sample(point2 const &, sampled_wl const &wl) const {
@@ -1025,16 +1037,18 @@ mat XYZtoRGB = {
 sampled_spectrum fromXYZ(vec const &c, sampled_wl const &wl) {
   double t = c[0] + c[1] + c[2];
   if (t == 0.) return sampled_spectrum(0.);
-  int x = (c[0] / t) * 19, y = (1 - c[1] / t) * 19;
-  assert(0 <= x && x < 20 && 0 <= y && y < 20);
+  double x = (c[0] / t) * 20., y = (1. - c[1] / t) * 20.;
   return c[1] * palette::get(x, y, wl);
 }
 
 struct from_texture: base {
   Image::base const *img;
   from_texture(Image::base const *i): img(i) {}
+
   sampled_spectrum sample(point2 const &uv, sampled_wl const &wl) const {
-    vec c = img->read(uv[0] * (img->width - 1), (1 - uv[1]) * (img->height - 1));
+    int x = std::min<int>(uv[0] * img->width, img->width - 1);
+    int y = std::min<int>((1 - uv[1]) * img->height, img->height - 1);
+    vec c = img->read(x, y);
     return fromXYZ(RGBtoXYZ * c, wl);
   }
 };
