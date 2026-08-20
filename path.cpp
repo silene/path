@@ -52,20 +52,17 @@ struct vec: std::array<double, 3> {
 
 }
 
-struct image {
+namespace Image {
+
+struct base {
   int width, height;
+  virtual Vector::vec read(int x, int y) const = 0;
+  ~base() {}
+};
+
+struct ppm: base {
   std::string data;
-  image(char const *name);
-  image(int w, int h): width(w), height(h), data(w * h * 3, '\0') {}
-
-  void write(int x, int y, int r, int g, int b) {
-    assert(0 <= x && x < width && 0 <= y && y < height);
-    int i = (y * width + x) * 3;
-    data[i + 0] = r;
-    data[i + 1] = g;
-    data[i + 2] = b;
-  }
-
+  ppm(char const *name);
   Vector::vec read(int x, int y) const {
     assert(0 <= x && x < width && 0 <= y && y < height);
     int i = (y * width + x) * 3;
@@ -76,15 +73,9 @@ struct image {
     }
     return v;
   }
-
-  void save(char const *name) {
-    std::ofstream out(name, std::ios::binary);
-    out << "P6 " << width << ' ' << height << " 255\n";
-    out << data << '\n';
-  }
 };
 
-image::image(char const *name) {
+ppm::ppm(char const *name) {
   std::ifstream file(name);
   char header[2];
   file.read(header, 2);
@@ -102,6 +93,50 @@ image::image(char const *name) {
       data[n] = (int)(255. * u / m);
     }
   }
+}
+
+struct buffer {
+  int width, height;
+  std::vector<float> data;
+  buffer(int w, int h)
+    : width(w), height(h), data(w * h * 3, 0.f) {}
+  void save(char const *) const;
+
+  void write(int x, int y, Vector::vec const &c) {
+    assert(0 <= x && x < width && 0 <= y && y < height);
+    int i = (y * width + x) * 3;
+    data[i + 0] = c[0];
+    data[i + 1] = c[1];
+    data[i + 2] = c[2];
+  }
+};
+
+void buffer::save(char const *name) const {
+  std::string name_(name);
+  assert(name_.size() >= 5);
+  name_ = name_.substr(name_.size() - 4);
+  std::ofstream out(name, std::ios::binary);
+  if (name_ == ".ppm") {
+    out << "P6 " << width << ' ' << height << " 255\n";
+    int s = width * height * 3;
+    std::string d(s, '\0');
+    for (int i = 0; i < s; ++i) {
+      float v = data[i];
+      unsigned char c;
+      if (v <= 0.) c = 0;
+      else if (v >= 1.) c = 255;
+      else c = data[i] * 255.;
+      d[i] = c;
+    }
+    out << d << '\n';
+  } else if (name_ == ".pfm") {
+    out << "PF\n" << width << ' ' << height << "\n-1.0\n";
+    for (int y = height - 1; y >= 0; --y) {
+      out.write((char const *)&data[y * width * 3], width * 12);
+    }
+  }
+}
+
 }
 
 thread_local std::mt19937_64 *rng;
@@ -845,8 +880,8 @@ sampled_spectrum fromXYZ(vec const &c, sampled_wl const &wl) {
 }
 
 struct from_texture: base {
-  image const *img;
-  from_texture(image const *i): img(i) {}
+  Image::base const *img;
+  from_texture(Image::base const *i): img(i) {}
   sampled_spectrum sample(point2 const &uv, sampled_wl const &wl) const {
     vec c = img->read(uv[0] * (img->width - 1), (1 - uv[1]) * (img->height - 1));
     return fromXYZ(RGBtoXYZ * c, wl);
@@ -2458,7 +2493,7 @@ struct stats {
   }
 };
 
-void pixel(image &img, int x, int y) {
+void pixel(Image::buffer &img, int x, int y) {
   int cs = sqrt(Settings::min_samples);
   if (cs * cs < Settings::min_samples) ++cs;
   sampler cells(cs * cs);
@@ -2485,12 +2520,7 @@ void pixel(image &img, int x, int y) {
     sample();
   }
   vec color = (1. / st.sn) * Spectrum::XYZtoRGB * toXYZ(sp);
-  auto clamp = [](double v) -> int {
-    if (v <= 0) return 0;
-    else if (v >= 1) return 255;
-    else return v * 255;
-  };
-  img.write(x, y, clamp(color[0]), clamp(color[1]), clamp(color[2]));
+  img.write(x, y, color);
   //int n = st.sn * (765. / Settings::max_samples);
   //img.write(x, y, n >= 255 ? 255 : n, n >= 510 ? 255 : (n >= 256 ? n - 255 : 0), n >= 765 ? 255 : (n >= 511 ? n - 510 : 0));
 }
@@ -2501,7 +2531,7 @@ int main() {
   //Solver::print_splits(Solver::splits.size() - 1, 0);
   int w = Settings::width, h = Settings::height;
   int b = 8;
-  image img(w, h);
+  Image::buffer img(w, h);
   int bw = (w + b - 1) / b, bh = (h + b - 1) / b;
   auto block = [=, &img](int n) {
     int u = (n % bw) * b, v = (n / bw) * b;

@@ -33,7 +33,7 @@ std::vector<object> objects {
     NULL },
   { new Solid::mesh { "objs/spot.obj" },
       new Material::lambertian {
-        new Spectrum::from_texture(new image("objs/spot.ppm")) },
+        new Spectrum::from_texture(new Image::ppm("objs/spot.ppm")) },
     new Transform::iso { { 0., -1. - 1.8 * -0.736784, -1.2 }, 1.8, { 0., 1., 0. }, -0.7 } },
 };
 
