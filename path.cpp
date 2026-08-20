@@ -274,6 +274,28 @@ vec cross(vec const &u, vec const &v) {
   return w;
 }
 
+point2 from_sphere(vec const &dir) {
+  vec d = (1. / (std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2]))) * dir;
+  double u = d[0], v = -d[2];
+  if (d[1] < 0.) {
+    double t = u;
+    u = (1. - std::abs(v)) * std::copysign(1., u);
+    v = (1. - std::abs(t)) * std::copysign(1., v);
+  }
+  return { (u + 1.) * 0.5, (v + 1.) * 0.5 };
+}
+
+vec to_sphere(point2 const &uv) {
+  double x = uv[0] * 2. - 1., z = 1. - uv[1] * 2.;
+  double y = 1. - (std::abs(x) + std::abs(z));
+  if (y < 0) {
+    double t = x;
+    x = (1. - std::abs(z)) * std::copysign(1., x);
+    z = (1. - std::abs(t)) * std::copysign(1., z);
+  }
+  return normalize(vec { x, y, z });
+}
+
 }
 
 using vec = Vector::vec;
@@ -991,6 +1013,8 @@ mat RGBtoXYZ = {
   0.17697, 0.81240, 0.01063,
   0.00000, 0.01000, 0.99000
 };
+
+vec RGBtoY = { 0.17697, 0.81240, 0.01063 };
 
 mat XYZtoRGB = {
   2.36461385,  -0.89654057, -0.46807328,
@@ -1927,38 +1951,62 @@ struct uniform: base {
   }
 };
 
-struct from_texture: base {
+struct environment: base {
   Image::base const *img;
-  double strength;
-  from_texture(Image::base const *i, double s)
-    : base(true, true), img(i), strength(s) {}
+  Sampler::discrete2D samp;
+  double strength, area;
+  environment(Image::base const *i, double s);
 
   biased<ray> sample(vec const &, vec const &n) const {
-    Sampler::hemisphere_uniform s(n);
-    auto [d, p] = s.sample();
-    return { { d, INFINITY }, p };
+    auto [xy, p] = samp.sample();
+    double u = (xy.first + 0.5) / img->width, v = (xy.second + 0.5) / img->height;
+    vec d = Vector::to_sphere(point2 { u, v });
+    return { { d, INFINITY }, p * area };
   }
 
   double pdf(vec const &, vec const &n, vec const &d) const {
-    Sampler::hemisphere_uniform s(n);
-    return s.pdf(d);
+    auto [u, v] = Vector::from_sphere(d);
+    int x = std::min<int>(u * img->width, img->width - 1);
+    int y = std::min<int>(v * img->height, img->height - 1);
+    return samp.pdf(x, y) * area;
   }
 
   sampled_spectrum get_sp(vec const &, vec const &dir, sampled_wl const &wl) const {
-    vec d = (1. / (std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2]))) * dir;
-    double x, y;
-    if (d[1] >= 0.) {
-      x = (d[0] + 1.) * 0.5;
-      y = (d[2] + 1.) * 0.5;
-    } else {
-      x = ((1. - std::abs(d[2])) * std::copysign(1., d[0]) + 1.) * 0.5;
-      y = ((1. - std::abs(d[0])) * std::copysign(1., d[2]) + 1.) * 0.5;
-    }
-    vec c = img->read(x * (img->width - 1), y * (img->height - 1));
+    auto [u, v] = Vector::from_sphere(dir);
+    int x = std::min<int>(u * img->width, img->width - 1);
+    int y = std::min<int>(v * img->height, img->height - 1);
+    vec c = img->read(x, y);
     sampled_spectrum s = strength * fromXYZ(Spectrum::RGBtoXYZ * c, wl);
     return s;
   }
 };
+
+environment::environment(Image::base const *i, double s)
+  : base(true, true), img(i), strength(s)
+  , area(img->width * img->height * M_1_PI * 0.25) {
+  if (Settings::shadows == Settings::None) return;
+  std::vector<float> lum;
+  lum.reserve(img->width * img->height);
+  double sum = 0.;
+  for (int y = 0; y < img->height; ++y) {
+    for (int x = 0; x < img->width; ++x) {
+      double v = Spectrum::RGBtoY | img->read(x, y);
+      sum += v;
+      lum.push_back(v);
+    }
+  }
+  if (Settings::shadows == Settings::Weighted) {
+    // When the environment can be reached in two different ways,
+    // the density function can ignore the darker parts.
+    sum /= img->width * img->height;
+    int nb = 0;
+    for (float &l: lum) {
+      if (l < sum) ++nb;
+      l = std::max(0.f, l - (float)sum);
+    }
+  }
+  samp = Sampler::discrete2D(img->width, img->height, &lum[0]);
+}
 
 struct spherical: base {
   Spectrum::ptr sp;
