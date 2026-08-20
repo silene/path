@@ -1826,6 +1826,39 @@ struct uniform: base {
   }
 };
 
+struct from_texture: base {
+  Image::base const *img;
+  double strength;
+  from_texture(Image::base const *i, double s)
+    : base(true, true), img(i), strength(s) {}
+
+  biased<ray> sample(vec const &, vec const &n) const {
+    Vector::hemisphere_uniform_sampler s(n);
+    auto [d, p] = s.sample();
+    return { { d, INFINITY }, p };
+  }
+
+  double pdf(vec const &, vec const &n, vec const &d) const {
+    Vector::hemisphere_uniform_sampler s(n);
+    return s.pdf(d);
+  }
+
+  sampled_spectrum get_sp(vec const &, vec const &dir, sampled_wl const &wl) const {
+    vec d = (1. / (std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2]))) * dir;
+    double x, y;
+    if (d[1] >= 0.) {
+      x = (d[0] + 1.) * 0.5;
+      y = (d[2] + 1.) * 0.5;
+    } else {
+      x = ((1. - std::abs(d[2])) * std::copysign(1., d[0]) + 1.) * 0.5;
+      y = ((1. - std::abs(d[0])) * std::copysign(1., d[2]) + 1.) * 0.5;
+    }
+    vec c = img->read(x * (img->width - 1), y * (img->height - 1));
+    sampled_spectrum s = strength * fromXYZ(Spectrum::RGBtoXYZ * c, wl);
+    return s;
+  }
+};
+
 struct spherical: base {
   Spectrum::ptr sp;
   Solid::sphere *sph;
