@@ -95,6 +95,32 @@ ppm::ppm(char const *name) {
   }
 }
 
+struct pfm: base {
+  std::vector<float> data;
+  pfm(char const *name);
+  Vector::vec read(int x, int y) const {
+    assert(0 <= x && x < width && 0 <= y && y < height);
+    int i = ((height - 1 - y) * width + x) * 3;
+    Vector::vec v;
+    for (int j = 0; j < 3; ++j) v[j] = data[i + j];
+    return v;
+  }
+};
+
+pfm::pfm(char const *name) {
+  std::ifstream file(name);
+  char header[2];
+  file.read(header, 2);
+  assert(header[0] == 'P' && header[1] == 'F');
+  double m;
+  file >> width >> height >> m;
+  assert(m < 0.);
+  file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  int s = width * height * 3;
+  data.resize(s);
+  file.read((char *)&data[0], s * 12);
+}
+
 struct buffer {
   int width, height;
   std::vector<float> data;
