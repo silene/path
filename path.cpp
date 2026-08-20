@@ -1955,24 +1955,25 @@ struct environment: base {
   Image::base const *img;
   Sampler::discrete2D samp;
   double strength, area;
-  environment(Image::base const *i, double s);
+  mat rot;
+  environment(Image::base const *i, double s, double a = 0.);
 
   biased<ray> sample(vec const &, vec const &n) const {
     auto [xy, p] = samp.sample();
     double u = (xy.first + 0.5) / img->width, v = (xy.second + 0.5) / img->height;
-    vec d = Vector::to_sphere(point2 { u, v });
+    vec d = transpose(rot) * Vector::to_sphere(point2 { u, v });
     return { { d, INFINITY }, p * area };
   }
 
   double pdf(vec const &, vec const &n, vec const &d) const {
-    auto [u, v] = Vector::from_sphere(d);
+    auto [u, v] = Vector::from_sphere(rot * d);
     int x = std::min<int>(u * img->width, img->width - 1);
     int y = std::min<int>(v * img->height, img->height - 1);
     return samp.pdf(x, y) * area;
   }
 
   sampled_spectrum get_sp(vec const &, vec const &dir, sampled_wl const &wl) const {
-    auto [u, v] = Vector::from_sphere(dir);
+    auto [u, v] = Vector::from_sphere(rot * dir);
     int x = std::min<int>(u * img->width, img->width - 1);
     int y = std::min<int>(v * img->height, img->height - 1);
     vec c = img->read(x, y);
@@ -1981,9 +1982,10 @@ struct environment: base {
   }
 };
 
-environment::environment(Image::base const *i, double s)
+environment::environment(Image::base const *i, double s, double a)
   : base(true, true), img(i), strength(s)
-  , area(img->width * img->height * M_1_PI * 0.25) {
+  , area(img->width * img->height * M_1_PI * 0.25)
+  , rot(Matrix::rotation({ 0., 1., 0. }, a)) {
   if (Settings::shadows == Settings::None) return;
   std::vector<float> lum;
   lum.reserve(img->width * img->height);
