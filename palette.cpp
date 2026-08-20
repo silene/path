@@ -243,7 +243,7 @@ int main() {
       double zz = (y - x) / yy;
       vec c { xx, 1., zz };
       c = Spectrum::XYZtoRGB * c;
-      c = 1 / (std::max(std::max(c[0], c[1]), c[2])) * c;
+      c = 1. / std::max({ c[0], c[1], c[2] }) * c;
       if (c[0] < 0 || c[1] < 0 || c[2] < 0) continue;
       img.write(x, y, clamp(c[0]), clamp(c[1]), clamp(c[2]));
     }
@@ -264,19 +264,23 @@ int main() {
     for (int j = 0; j < s; ++j) {
       c += (3 & (i >> (2 * j))) * xyz[j];
     }
-    double cc = (g - 1) / (c[0] + c[1] + c[2]);
-    int x = c[0] * cc, y = g - c[1] * cc;
+    double cc = g / (c[0] + c[1] + c[2]);
+    double xx = c[0] * cc, yy = c[1] * cc;
+    int x = xx + 0.5, y = yy + 0.5;
+    if (std::abs(x - xx) > 0.1 || std::abs(y - yy) > 0.1) continue;
     assert(0 <= x && x < g && 0 <= y && y < g);
     int &v = grid[y * g + x];
     int ni = 0, nv = 0;
     for (int j = 0; j < s; ++j) {
-      ni += (3 & (i >> (2 * j)));
-      nv += (3 & (v >> (2 * j)));
+      int vi = 3 & (i >> (2 * j));
+      int vv = 3 & (v >> (2 * j));
+      ni += vi ? 3 + vi : 0;
+      nv += vv ? 3 + vv : 0;
     }
     if (ni > nv) v = i;
   }
   std::cout << "int palette[" << g << "][" << g << "] = {\n" << std::showbase << std::hex;
-  for (int y = 0; y < g; ++y) {
+  for (int y = g - 1; y >= 0; --y) {
     std::cout << "  { ";
     for (int x = 0; x < g; ++x) {
       int i = grid[y * g + x];
@@ -288,9 +292,10 @@ int main() {
         sp[j] = white[j] / 3 * (3 & (i >> (2 * k)));
       }
       vec c = Spectrum::XYZtoRGB * Spectrum::toXYZ(sp);
+      c = 1. / std::max({ c[0], c[1], c[2] }) * c;
       for (int yy = 0; yy < 10; ++yy) {
         for (int xx = 0; xx < 10; ++xx) {
-          img.write(w/2 + x * 10 + xx, y * 10 + yy, clamp(c[0]), clamp(c[1]), clamp(c[2]));
+          img.write(w/2 + x * 10 + xx, (g - 1 - y) * 10 + yy, clamp(c[0]), clamp(c[1]), clamp(c[2]));
         }
       }
     }
@@ -299,7 +304,7 @@ int main() {
   std::cout << "};\n";
   for (int i = 0; i < g * 10; ++i) {
     img.write(w/2, i, 255, 255, 255);
-    img.write(w/2 + g * 5, i, 255, 255, 255);
+    img.write(w/2 + g / 2 * 10, i, 255, 255, 255);
     img.write(w/2 + g * 10 - 1, i, 255, 255, 255);
     img.write(w/2 + i, 0, 255, 255, 255);
     img.write(w/2 + i, g * 5, 255, 255, 255);
