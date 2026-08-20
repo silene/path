@@ -202,18 +202,6 @@ using biased = std::pair<T, double>;
 
 using point2 = std::array<double, 2>;
 
-point2 disk_uniform_sampler() {
-  std::uniform_real_distribution dis(-1., 1.);
-  point2 res;
-  for (;;) {
-    res[0] = dis(*rng);
-    res[1] = dis(*rng);
-    double l = res[0] * res[0] + res[1] * res[1];
-    if (l > 1 || l < 1e-6) continue;
-    return res;
-  }
-}
-
 // Computations should be invariant wrt this arbitrarily large value.
 // Taken as 1 to avoid numerical issues.
 double const Dirac = 1.;
@@ -286,12 +274,30 @@ vec cross(vec const &u, vec const &v) {
   return w;
 }
 
-struct sphere_uniform_sampler {
+}
+
+using vec = Vector::vec;
+
+namespace Sampler {
+
+point2 disk_uniform() {
+  std::uniform_real_distribution dis(-1., 1.);
+  point2 res;
+  for (;;) {
+    res[0] = dis(*rng);
+    res[1] = dis(*rng);
+    double l = res[0] * res[0] + res[1] * res[1];
+    if (l > 1 || l < 1e-6) continue;
+    return res;
+  }
+}
+
+struct sphere_uniform {
   biased<vec> sample() const;
   double pdf(vec const &) const;
 };
 
-biased<vec> sphere_uniform_sampler::sample() const {
+biased<vec> sphere_uniform::sample() const {
   std::uniform_real_distribution dis(-1., 1.);
   for (;;) {
     vec w;
@@ -302,18 +308,18 @@ biased<vec> sphere_uniform_sampler::sample() const {
   }
 }
 
-double sphere_uniform_sampler::pdf(vec const &) const {
+double sphere_uniform::pdf(vec const &) const {
   return 0.25 * M_1_PI;
 }
 
-struct hemisphere_uniform_sampler {
+struct hemisphere_uniform {
   vec u;
-  hemisphere_uniform_sampler(vec const &u_): u(u_) {}
+  hemisphere_uniform(vec const &u_): u(u_) {}
   biased<vec> sample() const;
   double pdf(vec const &) const;
 };
 
-biased<vec> hemisphere_uniform_sampler::sample() const {
+biased<vec> hemisphere_uniform::sample() const {
   std::uniform_real_distribution dis(-1., 1.);
   for (;;) {
     vec w;
@@ -325,19 +331,19 @@ biased<vec> hemisphere_uniform_sampler::sample() const {
   }
 }
 
-double hemisphere_uniform_sampler::pdf(vec const &v) const {
+double hemisphere_uniform::pdf(vec const &v) const {
   if ((u | v) <= 0) return 0.;
   return 0.5 * M_1_PI;
 }
 
-struct hemisphere_linear_sampler {
+struct hemisphere_linear {
   vec u;
-  hemisphere_linear_sampler(vec const &u_): u(u_) {}
+  hemisphere_linear(vec const &u_): u(u_) {}
   biased<vec> sample() const;
   double pdf(vec const &) const;
 };
 
-biased<vec> hemisphere_linear_sampler::sample() const {
+biased<vec> hemisphere_linear::sample() const {
   std::uniform_real_distribution dis(-1., 1.);
   for (;;) {
     vec w;
@@ -355,20 +361,20 @@ biased<vec> hemisphere_linear_sampler::sample() const {
   }
 }
 
-double hemisphere_linear_sampler::pdf(vec const &v) const {
+double hemisphere_linear::pdf(vec const &v) const {
   if ((u | v) <= 0) return 0.;
   return (u | v) * M_1_PI;
 }
 
-struct hemisphere_power_sampler {
+struct hemisphere_power {
   vec u;
   double p;
-  hemisphere_power_sampler(vec const &u_, double p_): u(u_), p(p_) {}
+  hemisphere_power(vec const &u_, double p_): u(u_), p(p_) {}
   biased<vec> sample() const;
   double pdf(vec const &) const;
 };
 
-biased<vec> hemisphere_power_sampler::sample() const {
+biased<vec> hemisphere_power::sample() const {
   std::uniform_real_distribution dis(-1., 1.);
   for (;;) {
     vec w;
@@ -386,20 +392,20 @@ biased<vec> hemisphere_power_sampler::sample() const {
   }
 }
 
-double hemisphere_power_sampler::pdf(vec const &v) const {
+double hemisphere_power::pdf(vec const &v) const {
   if ((u | v) <= 0) return 0.;
   return (p + 1) * exp(log(u | v) * p) * 0.5 * M_1_PI;
 }
 
-struct cone_uniform_sampler {
+struct cone_uniform {
   vec u;
   double cmax;
-  cone_uniform_sampler(vec const &u_, double c_): u(u_), cmax(c_) {}
+  cone_uniform(vec const &u_, double c_): u(u_), cmax(c_) {}
   biased<vec> sample() const;
   double pdf(vec const &) const;
 };
 
-biased<vec> cone_uniform_sampler::sample() const {
+biased<vec> cone_uniform::sample() const {
   std::uniform_real_distribution dis(-1., 1.);
   std::uniform_real_distribution dis2(0., 1.);
   for (;;) {
@@ -414,14 +420,12 @@ biased<vec> cone_uniform_sampler::sample() const {
   }
 }
 
-double cone_uniform_sampler::pdf(vec const &v) const {
+double cone_uniform::pdf(vec const &v) const {
   if ((u | v) <= cmax) return 0.;
   return 1 / (2 * M_PI * (1 - cmax));
 }
 
 }
-
-using vec = Vector::vec;
 
 #if 0
 int main() {
@@ -430,9 +434,9 @@ int main() {
   int nb = 100000000;
   double v = 0;
   vec u { 1., 0., 0. };
-  Vector::hemisphere_uniform_sampler t(u);
-  Vector::hemisphere_power_sampler s(u, 2.1);
-  //Vector::hemisphere_linear_sampler s(u);
+  Sampler::hemisphere_uniform t(u);
+  Sampler::hemisphere_power s(u, 2.1);
+  //Sampler::hemisphere_linear s(u);
   for (int i = 0; i < nb; ++i) {
     auto [vv, pp] = t.sample();
     v += s.pdf(vv) / pp;
@@ -1804,13 +1808,13 @@ struct multidirectional: base {
       inv_area(1 / (2 * M_PI * (1 - cmax))) {}
 
   biased<ray> sample(vec const &, vec const &) const {
-    Vector::cone_uniform_sampler s(dir, cmax);
+    Sampler::cone_uniform s(dir, cmax);
     auto [dir, p] = s.sample();
     return { { dir, INFINITY }, p };
   }
 
   double pdf(vec const &, vec const &, vec const &d) const {
-    Vector::cone_uniform_sampler s(dir, cmax);
+    Sampler::cone_uniform s(dir, cmax);
     return s.pdf(d);
   }
 
@@ -1826,13 +1830,13 @@ struct uniform: base {
   uniform(Spectrum::ptr s): base(true, true), sp(s) {}
 
   biased<ray> sample(vec const &, vec const &n) const {
-    Vector::hemisphere_linear_sampler s(n);
+    Sampler::hemisphere_linear s(n);
     auto [d, p] = s.sample();
     return { { d, INFINITY }, p };
   }
 
   double pdf(vec const &, vec const &n, vec const &d) const {
-    Vector::hemisphere_linear_sampler s(n);
+    Sampler::hemisphere_linear s(n);
     return s.pdf(d);
   }
 
@@ -1848,13 +1852,13 @@ struct from_texture: base {
     : base(true, true), img(i), strength(s) {}
 
   biased<ray> sample(vec const &, vec const &n) const {
-    Vector::hemisphere_uniform_sampler s(n);
+    Sampler::hemisphere_uniform s(n);
     auto [d, p] = s.sample();
     return { { d, INFINITY }, p };
   }
 
   double pdf(vec const &, vec const &n, vec const &d) const {
-    Vector::hemisphere_uniform_sampler s(n);
+    Sampler::hemisphere_uniform s(n);
     return s.pdf(d);
   }
 
@@ -1887,7 +1891,7 @@ struct spherical: base {
     vec v = sph->center - pos;
     double cmax = sqrt(1 - sph->radius * sph->radius / (v | v));
     v = normalize(v);
-    Vector::cone_uniform_sampler s(v, cmax);
+    Sampler::cone_uniform s(v, cmax);
     auto [dir,p] = s.sample();
     return { { dir, sph->distance(pos, dir) }, p };
   }
@@ -1896,7 +1900,7 @@ struct spherical: base {
     vec v = sph->center - pos;
     double cmax = sqrt(1 - sph->radius * sph->radius / (v | v));
     v = normalize(v);
-    Vector::cone_uniform_sampler s(v, cmax);
+    Sampler::cone_uniform s(v, cmax);
     return s.pdf(d);
   }
 
@@ -1981,12 +1985,12 @@ struct lambertian: material_base {
   }
 
   double pdf(intersection const &pt, vec const &inc) const {
-    Vector::hemisphere_linear_sampler s(pt.normal);
+    Sampler::hemisphere_linear s(pt.normal);
     return s.pdf(inc);
   }
 
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
-    Vector::hemisphere_linear_sampler s(pt.normal);
+    Sampler::hemisphere_linear s(pt.normal);
     auto [inc, pdf] = s.sample();
     double f = (inc | pt.normal) * M_1_PI;
     return { { f * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
@@ -2018,7 +2022,7 @@ struct rough: material_base {
 
   double pdf(intersection const &pt, vec const &inc) const {
     assert(!specular);
-    Vector::hemisphere_power_sampler samp(pt.normal, alpha);
+    Sampler::hemisphere_power samp(pt.normal, alpha);
     vec m = normalize(inc + pt.out);
     return samp.pdf(m) / (4 * (m | pt.out));
   }
@@ -2028,7 +2032,7 @@ struct rough: material_base {
       vec inc = reflect(pt.normal, pt.out);
       return { { sp->sample(pt.uv, wl), inc, Specular }, 1. };
     }
-    Vector::hemisphere_power_sampler samp(pt.normal, alpha);
+    Sampler::hemisphere_power samp(pt.normal, alpha);
     auto [m, pdf] = samp.sample();
     double c = pt.out | m;
     pdf /= 4 * c;
@@ -2182,7 +2186,7 @@ std::pair<vec, vec> simple_lens::get(double fx, double fy) const {
   // Take a random point on the lens as the start of the ray,
   // and direct the ray toward the point on the focal plane
   // that would have been targeted if there was no lens.
-  point2 l = disk_uniform_sampler();
+  point2 l = Sampler::disk_uniform();
   vec s = lens * vec { l[0], l[1], 0. };
   vec d { fx, fy, 1. };
   d = focal * d - s;
