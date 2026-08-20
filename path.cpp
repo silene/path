@@ -2502,9 +2502,9 @@ double mis_weight(double x, double y) {
   return x / (x + y);
 }
 
-sampled_spectrum handle_light(sampled_wl const &wl, path_point const &pt, Light::ptr l, sampled_spectrum const &fact) {
+sampled_spectrum handle_light(sampled_wl const &wl, path_point const &pt, Light::ptr l) {
   if (!pt.already_illuminated)
-    return fact * l->get_sp(pt.pt.pos, pt.inc, wl);
+    return l->get_sp(pt.pt.pos, pt.inc, wl);
   assert(Settings::shadows == Settings::Weighted);
   // Lights without a pdf have already been fully processed.
   if (!l->has_pdf) return { 0. };
@@ -2512,7 +2512,7 @@ sampled_spectrum handle_light(sampled_wl const &wl, path_point const &pt, Light:
   if (sp.zero()) return sp;
   double l_pdf = Light::lights.pdf(l, pt.pt, pt.inc);
   double w = mis_weight(pt.pdf, l_pdf);
-  return w * fact * sp;
+  return w * sp;
 }
 
 sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
@@ -2527,7 +2527,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
     if (!co.obj) {
       if (Settings::shadows != Settings::Weighted && prev.already_illuminated) break;
       for (Light::ptr l: distant_lights) {
-        color += handle_light(wl, prev, l, fact);
+        color += fact * handle_light(wl, prev, l);
       }
       break;
     };
@@ -2555,7 +2555,7 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
       if (Settings::shadows != Settings::Weighted && prev.already_illuminated) break;
       Material::emissive const *me = dynamic_cast<Material::emissive const *>(mat);
       Light::ptr l = me->light;
-      color += handle_light(wl, prev, l, fact);
+      color += fact * handle_light(wl, prev, l);
       break;
     }
     if (!all_specular && Settings::regularize)
