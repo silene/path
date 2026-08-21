@@ -1554,13 +1554,14 @@ struct mesh: base {
   std::vector<std::array<int, 3>> facets;
   std::vector<std::array<int, 3>> facets_n;
   std::vector<std::array<int, 3>> facets_uv;
-  bool inv_normal;
+  bool inv_normal, auto_normal;
 
-  mesh(char const *name, bool = false);
+  mesh(char const *name, bool = false, bool = true);
   int subparts() const { return facets.size(); }
   double distance(vec const &pos, vec const &dir, contact &, int data) const;
   vec snormal(contact const &) const;
   point2 uv(contact const &) const;
+  void generate_normal();
 
   bool complete(contact &co, int d) const {
     co.data = d;
@@ -1587,8 +1588,8 @@ struct mesh: base {
   }
 };
 
-mesh::mesh(char const *name, bool b)
-  : inv_normal(b) {
+mesh::mesh(char const *name, bool b1, bool b2)
+  : inv_normal(b1), auto_normal(b2) {
   std::ifstream file(name);
   //double ymin = INFINITY;
   bool has_n = false, has_uv = false;
@@ -1649,7 +1650,26 @@ mesh::mesh(char const *name, bool b)
   }
   //std::cout << ymin << '\n';
   if (!has_uv) facets_uv.clear();
-  if (!has_n) facets_n.clear();
+  if (!has_n) {
+    facets_n.clear();
+    if (auto_normal) generate_normal();
+  } else auto_normal = false;
+}
+
+void mesh::generate_normal() {
+  assert(normals.empty());
+  normals.resize(vertices.size(), vec { 0., 0., 0. });
+  for (auto const &f: facets) {
+    vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
+    vec n = cross(p1 - p0, p2 - p0);
+    if (inv_normal) n = -n;
+    for (int i = 0; i < 3; ++i) {
+      normals[f[i]] += n;
+    }
+  }
+  for (vec &n: normals) {
+    n = normalize(n);
+  }
 }
 
 double mesh::distance(vec const &pos, vec const &dir, contact &co, int data) const {
@@ -1678,11 +1698,16 @@ double mesh::distance(vec const &pos, vec const &dir, contact &co, int data) con
 }
 
 vec mesh::snormal(contact const &co) const {
-  if (facets_n.empty()) return co.normal;
-  std::array<int, 3> const &fn = facets_n[co.data];
-  int i0 = fn[0], i1 = fn[1], i2 = fn[2];
-  if (i0 < 0 || i1 < 0 || i2 < 0) return co.normal;
-  vec const &n0 = normals[i0], &n1 = normals[i1], &n2 = normals[i2];
+  std::array<int, 3> idx;
+  if (auto_normal) {
+    idx = facets[co.data];
+  } else if (!facets_n.empty()) {
+    idx = facets_n[co.data];
+    if (idx[0] < 0 || idx[1] < 0 || idx[2] < 0) return co.normal;
+  } else
+    return co.normal;
+  vec const &n0 = normals[idx[0]], &n1 = normals[idx[1]],
+    &n2 = normals[idx[2]];
   auto [u, v] = co.uv;
   return normalize((1 - u - v) * n0 + u * n1 + v * n2);
 }
