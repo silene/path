@@ -29,7 +29,7 @@ std::vector<Light::ptr> lights {
 
 std::vector<object> objects {
   { new Solid::plane { { 0., 1., 0. }, 1. },
-    new Material::lambertian { new Spectrum::from_palette { 0.4, 5, 9 } },
+    new Material::lambertian { new Spectrum::xyY { 0.25, 0.55, 0.4 } },
     NULL },
   { new Solid::mesh { "objs/spot.obj" },
       new Material::lambertian {
@@ -42,12 +42,10 @@ std::vector<object> objects {
 namespace Camera {
 
 camera const *camera = new simple {
-  vec { 0., 2., -5. },
-  mat {
-    1., 0., 0.,
-    0., cos(0.4), -sin(0.4),
-    0., sin(0.4), cos(0.4)
-  } };
+  vec { 0., 1.8, -11. },
+  vec { 0., 0.4, 0. },
+  1.
+};
 
 }
 #endif

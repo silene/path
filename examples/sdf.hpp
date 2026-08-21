@@ -49,7 +49,7 @@ std::vector<Light::ptr> lights {
 
 std::vector<object> objects {
   { new Solid::plane { { 0., 1., 0. }, 1. },
-    new Material::lambertian { new Spectrum::from_palette { 0.4, 5, 9 } },
+    new Material::lambertian { new Spectrum::xyY { 0.25, 0.55, 0.4 } },
     NULL },
   { new Solid::plane { Vector::normalize ({ 1., 0., -1. }), 2.5 },
     new Material::lambertian { new Spectrum::uniform { 0.9 } },
@@ -61,7 +61,7 @@ std::vector<object> objects {
       new SDF::smooth_union { 0.25,
         new SDF::sphere { { 2., -0.4, -1.2 }, 0.6 },
         new SDF::sphere { { 2., 0.4, -1.2 }, 0.3 } } },
-    new Material::lambertian { new Spectrum::from_palette { 0.9, 7, 11 } },
+    new Material::lambertian { new Spectrum::xyY { 0.43, 0.48, 0.9 } },
     NULL },
   { new Solid::sdf {
       new SDF::difference {
@@ -80,7 +80,7 @@ std::vector<object> objects {
           new SDF::sphere { { -0.4, 0.2, 1.1 }, 0.15 },
           new SDF::sphere { { 0., 0.2, 1.1 }, 0.15 },
           new SDF::sphere { { 0.4, 0.2, 1.1 }, 0.15 }, } }, },
-    new Material::lambertian { new Spectrum::from_palette { 0.9, 10, 11 } },
+    new Material::lambertian { new Spectrum::xyY { 0.55, 0.4, 0.9 } },
     new Transform::iso { { 0., 0., 0. }, 1., { 0., 1., 0. }, -1.05 } },
 };
 
@@ -89,8 +89,9 @@ std::vector<object> objects {
 namespace Camera {
 
 camera const *camera = new simple_lens {
-  vec { 0.8, 2., -5. },
-  vec { 0.7, 0.1, -0.8 },
+  vec { 1., 4.5, -14. },
+  vec { 0.9, 0.1, -0.8 },
+  1.,
   0.05 };
 
 }

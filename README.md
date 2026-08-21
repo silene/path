@@ -16,13 +16,13 @@ from mathematics to implementation details.
 In particular, without this book, I would never have fully understood
 the following points:
 
-- Handling specular rays does not have to be a hack. They neatly fit
-  into a Monte-Carlo framework, despite their Dirac distributions, as
-  long as importance sampling is used.
-
 - Sampling both the material bsdf and the light sources along a path
   is a mathematically-grounded way to perform illumination, thanks to
   multiple importance sampling.
+
+- Handling specular rays does not have to be a hack. They neatly fit
+  into a Monte-Carlo framework, despite their Dirac distributions, as
+  long as importance sampling is used.
 
 - Sampling the whole visible spectrum rather than just three color
   channels does not make things much harder or slower. Moreover, it
@@ -37,27 +37,32 @@ was [Inigo Quilez's
 website](https://iquilezles.org/articles/distfunctions/), which is a
 treasure trove of ideas.
 
-Note: A slightly modern C++ compiler is needed, as the code relies on
-several C++20 features.
-
-To generate a `foo.ppm` file from a scene description (e.g.,
-`examples/spheres.hpp`), execute the following command.
+Scenes are just C++ code. To generate a `foo.ppm` file from a scene
+description (e.g., `examples/spheres.hpp`), execute the following
+command.
 
 ```shell
 make -f Remakefile examples/spheres && examples/spheres
 ```
 
-Supported features:
+Note: A slightly modern C++ compiler is needed, as the code relies on
+several C++20 features.
+
+## Supported features
 
 - Pathtracing by sampling both lights and materials.
 
 - Raymarching using signed distance functions.
 
-- Triangulated meshes using the `.obj` format with textures using the `.ppm` format.
+- Triangulated meshes using the `.obj` format with textures and normals.
+
+- Environment maps.
 
 - Spectral distributions.
 
-Caveats:
+- Textures and output as `.ppm` and `.pfm` files.
+
+## Caveats
 
 - Signed distance functions are only meaningful outside primitives, so
   they should not be used with a transparent material.
@@ -65,8 +70,6 @@ Caveats:
 - There is neither path regularization nor bidirectional illumination,
   so diffuse surfaces indirectly illuminated by reflective or
   refractive materials will look very noisy.
-
-- Texture colors are poorly approximated by spectral distributions.
 
 - Too many caveats to list exhaustively.
 
