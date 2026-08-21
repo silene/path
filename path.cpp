@@ -1004,7 +1004,11 @@ sampled_spectrum palette::get(double x, double y, sampled_wl const &wl) {
   };
   sampled_spectrum pi = (1. - xf) * sp[0] + xf * sp[1];
   sampled_spectrum pj = (1. - xf) * sp[2] + xf * sp[3];
-  return (1. - yf) * pi + yf * pj;
+  sampled_spectrum s = (1. - yf) * pi + yf * pj;
+  for (int i = 0; i < nb_s; ++i) {
+    if (s[i] > 1.) s[i] = 1.;
+  }
+  return s;
 }
 
 palette palette;
