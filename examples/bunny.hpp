@@ -10,6 +10,18 @@ double const variance = 0.08;
 bool const regularize = false;
 #endif
 
+/***
+ * The model is from the Stanford repository of scanned models
+ * and the .obj version was recovered from Alex Jacobson:
+ * https://graphics.stanford.edu/data/3Dscanrep/
+ * https://github.com/alecjacobson/common-3d-test-models
+ *
+ * The environment map is from Bernhard Vogel and was converted
+ * by Benedikt Bitterli:
+ * https://dativ.at/lightprobes/
+ * https://benedikt-bitterli.me/resources/
+ */
+
 #ifdef SCENE
 namespace Scene {
 
