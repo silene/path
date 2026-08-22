@@ -2157,8 +2157,7 @@ struct lambertian: material_base {
     : material_base(Solid, true, true), sp(s) {}
 
   sampled_spectrum bxdf(intersection const &pt, vec const &inc, sampled_wl const &wl) const {
-    double f = (inc | pt.normal) * M_1_PI;
-    return f * sp->sample(pt.uv, wl);
+    return M_1_PI * sp->sample(pt.uv, wl);
   }
 
   double pdf(intersection const &pt, vec const &inc) const {
@@ -2169,11 +2168,11 @@ struct lambertian: material_base {
   biased<ray> sample(intersection const &pt, sampled_wl const &wl) const {
     Sampler::hemisphere_linear s(pt.normal);
     auto [inc, pdf] = s.sample();
-    double f = (inc | pt.normal) * M_1_PI;
-    return { { f * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
+    return { { M_1_PI * sp->sample(pt.uv, wl), inc, Diffuse }, pdf };
   }
 };
 
+#if 0
 struct rough: material_base {
   Spectrum::ptr sp;
   double roughness, alpha, scaling;
@@ -2229,6 +2228,7 @@ struct rough: material_base {
     return new rough(sp, r);
   }
 };
+#endif
 
 struct reflective: material_base {
   Spectrum::ptr eta, extinct;
@@ -2660,11 +2660,12 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
     if (!pdf) break;
     curr.inc = r.dir;
     curr.pdf = pdf;
-    if ((curr.inc | curr.pt.normal) < 0) {
+    if ((curr.inc | curr.pt.normal) < 0)
       curr.pt.pos += -1e-6 * curr.pt.normal;
-    } else {
+    else
       curr.pt.pos += 1e-6 * curr.pt.normal;
-    }
+    if (r.specular == Material::Diffuse)
+      r.sp *= (curr.inc | curr.pt.normal);
     if (Settings::shadows == Settings::None || r.specular == Material::Specular || !mat->has_bxdf) {
       no_illumination:
       (void)0;
@@ -2699,7 +2700,8 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
         assert(mat->has_pdf);
         w = mis_weight(pdf, mat->pdf(curr.pt, r.dir));
       }
-      color += (w / pdf) * fact * sp * mat->bxdf(curr.pt, r.dir, wl);
+      sampled_spectrum isp = (r.dir | curr.pt.normal) * mat->bxdf(curr.pt, r.dir, wl);
+      color += (w / pdf) * fact * sp * isp;
     }
     fact = (1 / pdf) * fact * r.sp;
     prev = curr;
