@@ -707,8 +707,20 @@ struct iso {
   iso(vec const &c, double sc, vec const &a, double r):
     center(c), scale(sc), iscale(1 / sc), rotate(Matrix::rotation(a, r)) {}
 
-  vec position(vec const &pos) const {
-    return iscale * rotate * (pos - center);
+  vec to_relative(vec const &pos) const {
+    return iscale * (rotate * (pos - center));
+  }
+
+  vec to_relative_d(vec const &dir) const {
+    return rotate * dir;
+  }
+
+  vec of_relative(vec const &pos) const {
+    return scale * (transpose(rotate) * pos) + center;
+  }
+
+  vec of_relative_d(vec const &dir) const {
+    return transpose(rotate) * dir;
   }
 
   box bounds(box const &b) const {
@@ -718,7 +730,7 @@ struct iso {
       for (int j = 0; j < 3; ++j) {
         v[j] = (i & (1 << j)) ? b.p2[j] : b.p1[j];
       }
-      r = Box::merge(r, position(v));
+      r = Box::merge(r, of_relative(v));
     }
     return r;
   }
@@ -1571,11 +1583,8 @@ struct mesh: base {
     assert(t);
     std::array<int, 3> const &f = facets[d];
     vec const &p0 = vertices[f[0]], &p1 = vertices[f[1]], &p2 = vertices[f[2]];
-    mat m = t->scale * transpose(t->rotate);
-    vec v = m * p0 + t->center;
-    box b = Box::merge(v, m * p1 + t->center);
-    b = Box::merge(b, m * p2 + t->center);
-    return b;
+    box b = Box::merge(t->of_relative(p0), t->of_relative(p1));
+    return Box::merge(b, t->of_relative(p2));
   }
 
   ball sbounds(int, Transform::ptr t) const {
@@ -2545,8 +2554,8 @@ bool contact_finder::check_range(int ib, int ie, contact &bco) const {
     ++dbg->solids;
     vec pos2 = pos, dir2 = dir;
     if (obj.transf) {
-      pos2 = obj.transf->position(pos);
-      dir2 = obj.transf->rotate * dir;
+      pos2 = obj.transf->to_relative(pos);
+      dir2 = obj.transf->to_relative_d(dir);
     }
     Solid::contact co;
     double d, d2 = 0.;
@@ -2636,13 +2645,13 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
       continue;
     }
     */
-    path_point curr { { prev.pt.pos + co.dist * prev.inc, vec(), -prev.inc }, vec(), 0., false };
-    if (obj.transf) {
-      vec n = obj.solid->snormal(co.co);
-      curr.pt.normal = transpose(obj.transf->rotate) * n;
-    } else {
-      curr.pt.normal = obj.solid->snormal(co.co);
-    }
+    path_point curr {
+      { prev.pt.pos + co.dist * prev.inc,
+        obj.solid->snormal(co.co),
+        -prev.inc },
+      vec(), 0., false };
+    if (obj.transf)
+      curr.pt.normal = obj.transf->of_relative_d(curr.pt.normal);
     curr.pt.uv = obj.solid->uv(co.co);
     Material::ptr mat = obj.material;
     if (mat->kind != Material::Transmitive && (curr.pt.out | curr.pt.normal) < 1e-10) break;
