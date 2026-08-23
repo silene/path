@@ -1,17 +1,20 @@
-#ifdef SETTINGS
-int const width = 400, height = 400;
-double const max_depth = 100;
-skind const shadows = Weighted;
-int const min_steps = 3;
-int const max_steps = 20;
-int const min_samples = 100;
-int const max_samples = 10000;
-double const variance = 0.08;
-bool const regularize = false;
-#endif
+#include "camera.hpp"
+#include "light.hpp"
+#include "material.hpp"
+#include "path.hpp"
+#include "sdf.hpp"
+#include "solid.hpp"
 
-#ifdef SCENE
-namespace Scene {
+namespace Settings {
+
+double max_depth = 100;
+skind shadows = Weighted;
+int min_steps = 3, max_steps = 20;
+int min_samples = 100, max_samples = 10000;
+double variance = 0.08;
+bool regularize = false;
+
+}
 
 // Werner, Glantschnig, Ambrosch-Draxl, JPCRD 2009
 Spectrum::sampled silver_n { {
@@ -35,6 +38,10 @@ Spectrum::sampled silver_k { {
   { 619.921, 3.9130 },
   { 708.481, 4.6754 },
   { 826.561, 5.6373 } } };
+
+using Vector::vec;
+
+namespace Scene {
 
 std::vector<Light::ptr> lights {
   { new Light::spot {
@@ -88,11 +95,19 @@ std::vector<object> objects {
 
 namespace Camera {
 
-camera const *camera = new simple_lens {
-  vec { 1., 4.5, -14. },
-  vec { 0.9, 0.1, -0.8 },
-  1.,
-  0.05 };
+Camera::ptr camera = new simple_lens {
+    vec { 1., 4.5, -14. },
+    vec { 0.9, 0.1, -0.8 },
+    1.,
+    0.05 };
 
 }
-#endif
+
+int main() {
+  Solver::prepare();
+  integrator worker(400, 400);
+  worker.tiled();
+  worker.img.save("foo.ppm");
+  Debug::dump();
+  return 0;
+}

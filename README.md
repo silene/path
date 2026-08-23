@@ -42,7 +42,7 @@ description (e.g., `examples/spheres.hpp`), execute the following
 command.
 
 ```shell
-make -f Remakefile examples/spheres && examples/spheres
+make -f Remakefile REMAKE=true examples/spheres && examples/spheres
 ```
 
 Note: A slightly modern C++ compiler is needed, as the code relies on
@@ -74,10 +74,9 @@ several C++20 features.
 - Too many caveats to list exhaustively.
 
 Disclaimer: Most samplers are naive, rejection-based ones, and should
-not serve as examples. Also, the monolithic structure of the code is
-not a good practice either.
+not serve as inspiration.
 
 ![Image generated for the "spheres" example.](examples/spheres.jpg)
-![Image generated for the "sdf" example.](examples/sdf.jpg)
+![Image generated for the "dice" example.](examples/dice.jpg)
 ![Image generated for the "bunny" example.](examples/bunny.jpg)
 ![Image generated for the "spot" example.](examples/spot.jpg)

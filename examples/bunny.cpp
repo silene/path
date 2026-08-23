@@ -1,14 +1,20 @@
-#ifdef SETTINGS
-int const width = 400, height = 400;
-double const max_depth = 100;
-skind const shadows = Weighted;
-int const min_steps = 4;
-int const max_steps = 20;
-int const min_samples = 100;
-int const max_samples = 10000;
-double const variance = 0.08;
-bool const regularize = false;
-#endif
+#include "camera.hpp"
+#include "light.hpp"
+#include "material.hpp"
+#include "mesh.hpp"
+#include "path.hpp"
+#include "solid.hpp"
+
+namespace Settings {
+
+double max_depth = 100;
+skind shadows = Weighted;
+int min_steps = 4, max_steps = 20;
+int min_samples = 100, max_samples = 10000;
+double variance = 0.08;
+bool regularize = false;
+
+}
 
 /***
  * The model is from the Stanford repository of scanned models
@@ -22,7 +28,6 @@ bool const regularize = false;
  * https://benedikt-bitterli.me/resources/
  */
 
-#ifdef SCENE
 namespace Scene {
 
 std::vector<Light::ptr> lights {
@@ -48,11 +53,19 @@ std::vector<object> objects {
 
 namespace Camera {
 
-camera const *camera = new simple {
+Camera::ptr camera = new simple {
   vec { 0.9, 5.3, -10. },
   vec { 0.9, 0.8, -2.5 },
   1.
 };
 
 }
-#endif
+
+int main() {
+  Solver::prepare();
+  integrator worker(400, 400);
+  worker.tiled();
+  worker.img.save("foo.ppm");
+  Debug::dump();
+  return 0;
+}
