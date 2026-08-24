@@ -28,7 +28,7 @@ int constexpr nb_s = 4;
 
 struct sampled_spectrum: std::array<float, nb_s> {
   sampled_spectrum() = default;
-  sampled_spectrum(double d) { fill(d); }
+  sampled_spectrum(float d) { fill(d); }
   bool zero() const {
     for (int i = 0; i < nb_wl; ++i) {
       if ((*this)[i]) return false;

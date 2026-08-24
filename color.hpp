@@ -31,12 +31,12 @@ inline sampled_spectrum operator+(sampled_spectrum const &u, sampled_spectrum co
   return w += v;
 }
 
-inline sampled_spectrum &operator*=(sampled_spectrum &u, double a) {
+inline sampled_spectrum &operator*=(sampled_spectrum &u, float a) {
   for (int i = 0; i < nb_s; ++i) { u[i] *= a; }
   return u;
 }
 
-inline sampled_spectrum operator*(double a, sampled_spectrum const &u) {
+inline sampled_spectrum operator*(float a, sampled_spectrum const &u) {
   sampled_spectrum w;
   for (int i = 0; i < nb_s; ++i) { w[i] = a * u[i]; }
   return w;

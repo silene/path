@@ -193,8 +193,9 @@ sampled_spectrum palette::geti(int x, int y, sampled_wl const &wl) {
   sampled_spectrum s;
   assert(0 <= x && x < scale && 0 <= y && y < scale);
   int csp = compact_sp[y][x];
+  double invc = (double)channels / (max_wl - min_wl);
   for (int i = 0; i < nb_s; ++i) {
-    int l = channels * (wl.lambda[i] - min_wl) / (max_wl - min_wl);
+    int l = invc * (wl.lambda[i] - min_wl);
     s[i] = 3 & (csp >> (2 * l));
   }
   s *= factors[y][x];
