@@ -200,3 +200,21 @@ double cone_uniform::pdf(vec const &v) const {
 }
 
 }
+
+#if 0
+int main() {
+  std::mt19937_64 gen;
+  rng = &gen;
+  int nb = 100000000;
+  double v = 0;
+  vec u { 1., 0., 0. };
+  Sampler::hemisphere_uniform t(u);
+  Sampler::hemisphere_power s(u, 2.1);
+  //Sampler::hemisphere_linear s(u);
+  for (int i = 0; i < nb; ++i) {
+    auto [vv, pp] = t.sample();
+    v += s.pdf(vv) / pp;
+  }
+  std::cout << v / nb << '\n';
+}
+#endif

@@ -7,7 +7,10 @@
 
 namespace Solid {
 
+namespace {
 using Vector::vec;
+using Geometry::contact;
+}
 
 struct sphere: base {
   vec center;

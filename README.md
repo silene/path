@@ -38,7 +38,7 @@ website](https://iquilezles.org/articles/distfunctions/), which is a
 treasure trove of ideas.
 
 Scenes are just C++ code. To generate a `foo.ppm` file from a scene
-description (e.g., `examples/spheres.hpp`), execute the following
+description (e.g., `examples/spheres.cpp`), execute the following
 command.
 
 ```shell

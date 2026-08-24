@@ -80,4 +80,38 @@ using ptr = iso const *;
 
 point2 toUV(Vector::vec const &p, Vector::vec const &q, Vector::vec const &r);
 
+struct object;
+
+namespace Geometry {
+
+namespace {
+using Vector::vec;
+}
+
+struct contact {
+  vec pos, normal; // in the local basis
+  point2 uv;
+  int data;
+};
+
+struct full_contact {
+  contact co;
+  double dist = INFINITY;
+  object const *obj = NULL;
+  int data;
+};
+
+struct contact_finder {
+  vec pos, dir;
+  Box::checker checker;
+  contact_finder(vec const &p, vec const &d);
+  bool check_range(int ib, int ie, full_contact &) const;
+  bool check_split(int sp, full_contact &) const;
+  full_contact operator()(double dmax) const;
+};
+
+void prepare_bounds();
+
+}
+
 #endif

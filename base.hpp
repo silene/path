@@ -55,13 +55,8 @@ namespace Solid {
 
 namespace {
 using Vector::vec;
+using Geometry::contact;
 }
-
-struct contact {
-  vec pos, normal; // in the local basis
-  point2 uv;
-  int data;
-};
 
 struct base {
   virtual double distance(vec const &, vec const &, contact &, int) const = 0;
