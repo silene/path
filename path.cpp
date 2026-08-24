@@ -427,24 +427,6 @@ sampled_spectrum path(vec const &pos, vec const &dir, sampled_wl const &wl) {
 
 }
 
-struct sampler {
-  std::vector<int> values;
-  int index, nb;
-  sampler(int n): index(0), nb(n) {
-    values.reserve(nb);
-    for (int i = 0; i < nb; ++i) values.push_back(i);
-    std::shuffle(values.begin(), values.end(), *rng);
-  }
-  int next() {
-    int v = values[index];
-    if (++index == nb) {
-      index = 0;
-      std::shuffle(values.begin(), values.end(), *rng);
-    }
-    return v;
-  }
-};
-
 struct stats {
   double s1, s2;
   int sn;
@@ -464,12 +446,12 @@ integrator::integrator(int w, int h)
 void integrator::pixel(int x, int y) {
   int cs = sqrt(Settings::min_samples);
   if (cs * cs < Settings::min_samples) ++cs;
-  sampler cells(cs * cs);
+  Sampler::discrete_uniform cells(cs * cs);
   stats st;
   Spectrum::full_spectrum sp;
   std::uniform_real_distribution dis(0., 1.);
   auto sample = [&]() {
-    int i = cells.next();
+    int i = cells.sample();
     double dx = dis(*rng) + i / cs;
     double dy = dis(*rng) + i % cs;
     dx /= cs;

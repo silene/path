@@ -38,6 +38,13 @@ struct discrete2D {
   double pdf(int x, int y) const;
 };
 
+struct discrete_uniform {
+  std::vector<int> values;
+  int index, nb;
+  discrete_uniform(int n);
+  int sample();
+};
+
 point2 disk_uniform();
 
 struct sphere_uniform {

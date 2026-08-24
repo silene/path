@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 
 #include "sampler.hpp"
@@ -44,10 +45,10 @@ discrete::discrete(int nb, float const *d)
 
 biased<int> discrete::sample() const {
   assert(sum);
-  std::uniform_int_distribution<int> dis(0, probas.size() - 1);
-  std::uniform_real_distribution dis2(0., 1.);
-  int i = dis(*rng);
-  if (dis2(*rng) > aliases[i].first) i = aliases[i].second;
+  std::uniform_real_distribution dis(0., 1.);
+  double ir = std::min<double>(dis(*rng) * probas.size(), probas.size() - 1);
+  int i = ir;
+  if (ir - i > aliases[i].first) i = aliases[i].second;
   return { i, probas[i] };
 }
 
@@ -72,6 +73,22 @@ biased<std::pair<int,int>> discrete2D::sample() const {
   return { { x, y }, px * py };
 }
 
+discrete_uniform::discrete_uniform(int n)
+  : index(0), nb(n) {
+  values.reserve(nb);
+  for (int i = 0; i < nb; ++i) values.push_back(i);
+  std::shuffle(values.begin(), values.end(), *rng);
+}
+
+int discrete_uniform::sample() {
+  int v = values[index];
+  if (++index == nb) {
+    index = 0;
+    std::shuffle(values.begin(), values.end(), *rng);
+  }
+  return v;
+}
+
 point2 disk_uniform() {
   std::uniform_real_distribution dis(-1., 1.);
   point2 res;
@@ -79,7 +96,7 @@ point2 disk_uniform() {
     res[0] = dis(*rng);
     res[1] = dis(*rng);
     double l = res[0] * res[0] + res[1] * res[1];
-    if (l > 1 || l < 1e-6) continue;
+    if (l > 1) continue;
     return res;
   }
 }
