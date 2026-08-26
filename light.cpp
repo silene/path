@@ -99,9 +99,7 @@ environment::environment(Image::base const *i, double s, double a)
     // When the environment can be reached in two different ways,
     // the density function can ignore the darker parts.
     sum /= img->width * img->height;
-    int nb = 0;
     for (float &l: lum) {
-      if (l < sum) ++nb;
       l = std::max(0.f, l - (float)sum);
     }
   }

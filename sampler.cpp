@@ -46,9 +46,9 @@ discrete::discrete(int nb, float const *d)
 biased<int> discrete::sample() const {
   assert(sum);
   std::uniform_real_distribution dis(0., 1.);
-  double ir = std::min<double>(dis(*rng) * probas.size(), probas.size() - 1);
-  int i = ir;
-  if (ir - i > aliases[i].first) i = aliases[i].second;
+  double ir = dis(*rng) * probas.size();
+  int i = std::min<int>(ir, probas.size() - 1);
+  if (ir - i >= aliases[i].first) i = aliases[i].second;
   return { i, probas[i] };
 }
 
